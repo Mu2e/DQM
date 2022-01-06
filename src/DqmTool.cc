@@ -1,8 +1,8 @@
 
 #include <iostream>
 #include <fstream>
-#include "dqm/inc/DqmTool.hh"
-#include "dqm/inc/DqmTime.hh"
+#include "DQM/inc/DqmTool.hh"
+#include "DQM/inc/DqmTime.hh"
 #include "Offline/DbService/inc/DbIdList.hh"
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/classification.hpp>

@@ -1,5 +1,5 @@
-#ifndef Dqm_DqmValue_hh
-#define Dqm_DqmValue_hh
+#ifndef DQM_DqmValue_hh
+#define DQM_DqmValue_hh
 
 //
 // holds a single Dqm value, its name and uncertainty

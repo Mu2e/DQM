@@ -1,5 +1,5 @@
-#ifndef Dqm_DqmTool_hh
-#define Dqm_DqmTool_hh
+#ifndef DQM_DqmTool_hh
+#define DQM_DqmTool_hh
 
 //
 // A class to take DQM values as text and insert them in the database.
@@ -7,8 +7,8 @@
 // dqmTool which is the primary expected use pattern.
 //
 
-#include "dqm/inc/DqmSource.hh"
-#include "dqm/inc/DqmValue.hh"
+#include "DQM/inc/DqmSource.hh"
+#include "DQM/inc/DqmValue.hh"
 #include "Offline/DbTables/inc/DbIoV.hh"
 #include "Offline/DbService/inc/DbReader.hh"
 #include "Offline/DbService/inc/DbSql.hh"

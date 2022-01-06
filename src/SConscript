@@ -2,8 +2,6 @@
 #
 # Script to build the files found in this directory.
 #
-# Original author Rob Kutschke.
-#
 
 import os
 Import('env')

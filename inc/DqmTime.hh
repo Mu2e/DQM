@@ -1,5 +1,5 @@
-#ifndef Dqm_DqmTime_hh
-#define Dqm_DqmTime_hh
+#ifndef DQM_DqmTime_hh
+#define DQM_DqmTime_hh
 
 //
 // the interval of time and range of run/subrun for data going into a source
