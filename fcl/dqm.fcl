@@ -1,0 +1,26 @@
+#include "Offline/fcl/minimalMessageService.fcl"
+#include "Offline/fcl/standardServices.fcl"
+
+process_name : ExploreStrawDigis
+
+source : { module_type : RootInput }
+
+services : @local::Services.Reco
+services.TFileService.fileName : "dqm.root"
+
+physics :
+{
+  producers : {} 
+  analyzers : {
+    dqmCal : {
+      module_type : DqmCal
+      digiTag : SelectRecoMC
+      clusterTag : CaloClusterMaker
+    }
+  }
+
+  MyTrigPath : []
+  MyEndPath : [ dqmCal ]
+}
+
+
