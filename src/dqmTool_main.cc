@@ -2,7 +2,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include "dqm/inc/DqmTool.hh"
+#include "DQM/inc/DqmTool.hh"
 
 int main(int argc, char**argv) {
 

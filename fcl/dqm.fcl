@@ -1,12 +1,11 @@
 #include "Offline/fcl/minimalMessageService.fcl"
 #include "Offline/fcl/standardServices.fcl"
 
-process_name : ExploreStrawDigis
+process_name : DQM
 
 source : { module_type : RootInput }
 
 services : @local::Services.Reco
-services.TFileService.fileName : "dqm.root"
 
 physics :
 {
@@ -23,4 +22,5 @@ physics :
   MyEndPath : [ dqmCal ]
 }
 
+services.TFileService.fileName : "dqm.root"
 

@@ -1,5 +1,5 @@
-#ifndef Dqm_DqmSource_hh
-#define Dqm_DqmSource_hh
+#ifndef DQM_DqmSource_hh
+#define DQM_DqmSource_hh
 
 //
 // details for a single source of Dqm metrics (generally a file)
