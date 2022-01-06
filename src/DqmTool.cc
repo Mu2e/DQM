@@ -1,0 +1,839 @@
+
+#include <iostream>
+#include <fstream>
+#include "dqm/inc/DqmTool.hh"
+#include "dqm/inc/DqmTime.hh"
+#include "Offline/DbService/inc/DbIdList.hh"
+#include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/tokenizer.hpp>
+#include <string>
+
+mu2e::DqmTool::DqmTool() : verbose_(0) {}
+
+
+//***********************************************************
+
+int mu2e::DqmTool::run(const std::string &arg) { 
+  StringVec args = splitString(arg,' ');
+  return run(args); 
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::run(const StringVec &args) {
+
+  args_ = args;
+
+  int rc;
+  rc = parseGeneral();
+  if (rc != 0) return rc;
+
+  init();
+
+
+  if (action_ == "commit-value") {
+    rc = commitValue();
+  } else if (action_ == "print-sources") {
+    rc = printSources();
+  } else if (action_ == "print-intervals") {
+    rc = printIntervals();
+  } else if (action_ == "print-values") {
+    rc = printValues();
+  } else if (action_ == "print-numbers") {
+    rc = printNumbers();
+  } else {
+    std::cout << "Error - unknown action: " << action_ << std::endl;
+    return 1;
+  }
+
+  return rc;
+}
+
+
+//***********************************************************
+
+int mu2e::DqmTool::init() {
+
+  DbIdList idList; // read the connections info file
+  DbId id = idList.getDbId("mu2e_dqm_prd");
+
+  reader_.setDbId(id);
+  reader_.setVerbose(verbose_);
+  reader_.setTimeVerbose(verbose_);
+
+  sql_.setDbId(id);
+  sql_.setVerbose(verbose_);
+
+  return 0;
+}
+
+
+//***********************************************************
+
+int mu2e::DqmTool::commitValue() {
+
+  int rc;
+  argMap_["source"] = "";
+  argMap_["runs"] = "";
+  argMap_["start"] = "";
+  argMap_["end"] = "";
+  argMap_["value"] = "";
+
+  rc = parseAction();
+  if(rc) return rc;
+
+  // **** interpret source (process/stream/aggregation/version)
+
+  std::string ss = argMap_["source"];
+  if(ss.empty()) {
+    std::cout << "ERROR - commit-value requires --source" << std::endl;
+    return 1;
+  }
+
+  DqmSource source;
+  std::string runs;
+  // take the ss string and parse it into proces/stream, etc, fields, 
+  // whether it is a file name with a standard form, or csv string
+  // runs will be filled if the aources was a file with a runs type sequencer
+  rc = parseSource(source,runs,ss);
+  if(rc!=0) return rc; // the method will print any errors
+
+  // **** interpret time interval
+
+  std::string rn = argMap_["runs"];
+  std::string st = argMap_["start"];
+  std::string en = argMap_["end"];
+
+  // if we got a start run from the file name, and the
+  // expclicit run range parameter does not overwrite it, then use it
+  if (rn.empty() && !runs.empty()) rn = runs;
+
+  // must have some time or run restriction
+  if (rn.empty() && st.empty()) {
+    std::cout << "ERROR - commit-source requires one of --runs, --start, or a file name with a run_subrun sequencer" << std::endl;
+    return 1;
+  }
+  if (st.empty() && !en.empty()) {
+    std::cout << "ERROR - commit-source --end is non-empty but --start is empty (opposite is allowed)" << std::endl;
+    return 1;
+  }
+  // if there is a start time, but no end time, then set end to start
+  if(!st.empty() && en.empty()) en = st;
+  // if no times, set to irrelevent (there should still be a run range)
+  if(st.empty() && en.empty()) {
+    st = "-infinity";
+    en = "-infinity";
+  }
+  // if no run info given, set start and stop to 0
+  if(rn.empty()) rn="EMPTY";
+
+  // container for time
+  DqmTime time(rn,st,en);
+
+
+  // **** interpret values
+  std::string vv = argMap_["value"];
+
+  if( vv.empty() ) {
+    std::cout << "ERROR - commit-value requires --value" << std::endl;
+    return 1;
+  }
+
+  if(verbose_>2) {
+    std::cout <<"Running commit-source with parameters:" << std::endl;
+    std::cout <<"source :" << ss << std::endl;
+    std::cout <<"runs   :" << rn << std::endl;
+    std::cout <<"start  :" << st << std::endl;
+    std::cout <<"end    :" << en << std::endl;
+    std::cout <<"value : "<< vv << std::endl;
+  }
+
+
+  // collect the list of values from a file, if needed
+  StringVec values;
+  int nComm=0;
+  for(auto const& c : vv) {
+    if(c==',') nComm++;
+  }
+
+  if (nComm>0) {
+    values.emplace_back(vv);
+  } else {
+    std::ifstream myfile;
+    myfile.open(vv);
+    if(!myfile.is_open()) {
+      std::cout << "ERROR - failed to open file "<< vv << std::endl;
+      return 1;
+    }
+    std::string line;
+    while ( std::getline(myfile,line) ) {
+      if(!line.empty()) values.emplace_back(line);
+    }
+    if(verbose_>2) {
+      std::cout << "Read "<<values.size() <<" values from "<< vv << std::endl;
+    }
+  }
+
+  // parse value strings into DqmValue objects
+
+  DqmValueCollection valueColl;
+  for(auto const& vs : values) {
+    DqmValue vv;
+    // take a string like "cal,disk0,menaE,20.0,0.1,0"
+    // validate and split it into fields
+    rc = parseValue(vv,vs);
+    if(rc) return 1;
+    valueColl.emplace_back(vv);
+  }
+
+  // lookup or create, if necessary, the 4 table entries
+  // this doesn't need to be a transaction since each step is atomic
+
+  std::string  command,result;
+
+  rc = sql_.connect();
+  if(rc) return rc;
+
+  command = "SET ROLE dqmWrite;";
+  rc = sql_.execute(command, result);
+  if(rc) return rc;
+
+  // 1 ****** find or create the source ID 
+
+  int sid = -1;
+
+  command="select sid from dqm.sources where process='"+source.process()
+    +"' and stream='"+source.stream()
+    +"' and aggregation='"+source.aggregation()
+    +"' and version="+std::to_string(source.version())+";";
+  if(verbose_>4) {
+    std::cout << "Find sid for source" << std::endl;
+    std::cout << "command: " << command << std::endl;
+  }
+  rc = sql_.execute(command, result);
+  if(rc) return rc;
+  if(verbose_>4) {
+    std::cout << "result: "<< result << std::endl;
+  }
+
+  if(!result.empty()) { // found it
+    sid = std::stoi(result);
+  } else { // didn't find it, so create it
+
+    command = "INSERT INTO dqm.sources (process,stream,aggregation,version)  VALUES ('"
+    +source.process()+"','"
+    +source.stream()+"','"
+    +source.aggregation()+"',"
+    +std::to_string(source.version())+") RETURNING sid;";
+
+    if(verbose_>4) {
+      std::cout << "committing source:" << std::endl;
+      std::cout << "command: "<<command << std::endl;
+    }
+
+    rc = sql_.execute(command, result);
+    if(rc) return rc;
+    
+    sid = std::stoi(result);
+  }
+
+  if(verbose_>0) {
+    std::cout << "sid is "<<sid <<std::endl;
+  }
+
+  // 2 ****** find or create the interval ID 
+
+
+  int iid = -1;
+
+  command="select iid from dqm.intervals where start_run="
+    +std::to_string(time.iov().startRun())
+    +" and start_subrun="+std::to_string(time.iov().startSubrun())
+    +" and end_run="+std::to_string(time.iov().endRun())
+    +" and end_subrun="+std::to_string(time.iov().endSubrun())
+    +" and start_time='"+time.startTime()+"'"
+    +" and end_time='"+time.endTime()+"';";
+  if(verbose_>4) {
+    std::cout << "Find iid for interval" << std::endl;
+    std::cout << "command: " << command << std::endl;
+  }
+  rc = sql_.execute(command, result);
+  if(rc) return rc;
+  if(verbose_>4) {
+    std::cout << "result: "<< result << std::endl;
+  }
+
+  if(!result.empty()) { // found it
+    iid = std::stoi(result);
+  } else { // didn't find it, so create it
+
+    command = "INSERT INTO dqm.intervals (sid,start_run,start_subrun,end_run,end_subrun,start_time,end_time)  VALUES ("
+      +std::to_string(sid)+","
+      +std::to_string(time.iov().startRun())+","
+      +std::to_string(time.iov().startSubrun())+","
+      +std::to_string(time.iov().endRun())+","
+      +std::to_string(time.iov().endSubrun())+",'"
+      +time.startTime()+"','"
+      +time.endTime()+"') RETURNING iid;";
+
+    if(verbose_>4) {
+      std::cout << "committing source:" << std::endl;
+      std::cout << "command: "<<command << std::endl;
+    }
+
+    rc = sql_.execute(command, result);
+    if(rc) return rc;
+    
+    iid = std::stoi(result);
+  }
+
+  if(verbose_>0) {
+    std::cout << "iid is "<<iid <<std::endl;
+  }
+
+  // 3 ****** find or create the value ID 
+
+  for(auto const& value: valueColl) {
+    int vid = -1;
+
+    command="select vid from dqm.values where groupx='"+value.group()
+      +"' and subgroup='"+value.subgroup()
+      +"' and namex='"+value.name()+"';";
+    if(verbose_>4) {
+      std::cout << "Find vid for value" << std::endl;
+      std::cout << "command: " << command << std::endl;
+    }
+
+    rc = sql_.execute(command, result);
+    if(rc) return rc;
+
+    if(verbose_>4) {
+      std::cout << "result: "<< result << std::endl;
+    }
+
+    if(!result.empty()) { // found it
+      vid = std::stoi(result);
+    } else { // didn't find it, so create it
+
+    command = "INSERT INTO dqm.values (groupx,subgroup,namex)  VALUES ('"
+    +value.group()+"','"
+    +value.subgroup()+"','"
+    +value.name()+"') RETURNING vid;";
+
+    if(verbose_>4) {
+      std::cout << "committing source:" << std::endl;
+      std::cout << "command: "<<command << std::endl;
+    }
+
+    rc = sql_.execute(command, result);
+    if(rc) return rc;
+    
+    vid = std::stoi(result);
+  }
+
+  if(verbose_>0) {
+    std::cout << "vid is "<< vid <<std::endl;
+  }
+
+  // 4 ****** create the numbers entry
+
+
+    int nid = -1;
+
+    command = "INSERT INTO dqm.numbers (sid,iid,vid,valuex,sigma,code)  VALUES ("
+      +std::to_string(sid)+","
+      +std::to_string(iid)+","
+      +std::to_string(vid)+",'"
+      +value.valueStr()+"','"
+      +value.sigmaStr()+"',"
+      +std::to_string(value.code())+") RETURNING nid;";
+  
+    if(verbose_>4) {
+      std::cout << "committing source:" << std::endl;
+      std::cout << "command: "<<command << std::endl;
+    }
+    
+    rc = sql_.execute(command, result);
+    if(rc) return rc;
+    
+    nid = std::stoi(result);
+
+    if(verbose_>0) {
+      std::cout << "new nid is "<< nid <<std::endl;
+    }
+  }
+
+  rc = sql_.disconnect();
+  if(rc) return rc;
+
+  return 0;
+  
+}
+
+
+//***********************************************************
+
+int mu2e::DqmTool::printSources() {
+
+  int rc = 0;
+  argMap_["heading"] = "";
+  rc = parseAction();
+  if(rc!=0) return rc;
+
+  std::string command("select sid,process,stream,aggregation,version from dqm.sources");
+
+  rc = sql_.connect();
+  if(rc) return rc;
+
+  rc = sql_.execute(command, result_);
+  if(rc) return rc;
+
+  rc = sql_.disconnect();
+  if(rc) return rc;
+
+  if(!argMap_["heading"].empty()) {
+    result_ = "sid, process, stream, aggregation, version\n"+result_;
+  }
+
+  return 0;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::printIntervals() {
+
+  int rc = 0;
+  argMap_["heading"] = "";
+  rc = parseAction();
+  if(rc!=0) return rc;
+
+  std::string command("select iid,sid,start_run,start_subrun,end_run,end_subrun,start_time,end_time from dqm.intervals");
+
+  rc = sql_.connect();
+  if(rc) return rc;
+
+  rc = sql_.execute(command, result_);
+  if(rc) return rc;
+
+  rc = sql_.disconnect();
+  if(rc) return rc;
+
+  if(!argMap_["heading"].empty()) {
+    result_ = "iid, sid, start_run, start_subrun, end_run, end_subrun, start_time, end_time\n"+result_;
+  }
+
+  return 0;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::printValues() {
+
+  int rc = 0;
+  argMap_["heading"] = "";
+  rc = parseAction();
+  if(rc!=0) return rc;
+
+  std::string command("select vid, groupx, subgroup, namex from dqm.values");
+
+  rc = sql_.connect();
+  if(rc) return rc;
+
+  rc = sql_.execute(command, result_);
+  if(rc) return rc;
+
+  rc = sql_.disconnect();
+  if(rc) return rc;
+
+  if(!argMap_["heading"].empty()) {
+    result_ = "vid, group, subgroup, name\n"+result_;
+  }
+
+  return 0;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::printNumbers() {
+
+  int rc = 0;
+  argMap_["heading"] = "";
+  rc = parseAction();
+  if(rc!=0) return rc;
+
+  std::string command("select nid, sid, iid, vid, valuex, sigma, code from dqm.numbers");
+
+  rc = sql_.connect();
+  if(rc) return rc;
+
+  rc = sql_.execute(command, result_);
+  if(rc) return rc;
+
+  rc = sql_.disconnect();
+  if(rc) return rc;
+
+  if(!argMap_["heading"].empty()) {
+    result_ = "nid, sid, iid, vid, value, sigma, code\n"+result_;
+  }
+
+  return 0;
+}
+
+
+
+//***********************************************************
+// parse string into a DqmSource
+// runs returns the sequencer field as a run range
+
+int mu2e::DqmTool::parseSource(DqmSource& source, std::string& runs, 
+                               const std::string &ss) {
+
+  //ss (source string) may be a file:
+  //ntd.mu2e.DQM_stream.process_aggregation_version.run_subrun.root
+  //or a text listing
+  //process,stream,aggregation,version
+
+  StringVec vs = splitString(ss);
+  
+  std::string process,stream,aggregation,version;
+  if(vs.size()==6) { // assume a file name
+
+    StringVec dd = splitString(vs[2],'_');
+    if(dd.size()!=2) {
+      std::cout << "ERROR - interpreting source as a file name, \n"
+                << "      did not find 2 fields in the description field: " 
+                << vs[2] <<std::endl;
+      return 1;
+    }
+    stream = dd[1];
+
+    StringVec cc = splitString(vs[3],'_');
+    if(cc.size()!=3) {
+      std::cout << "ERROR - interpreting source as a file name, \n"
+                << "      did not find 3 fields in the config field: " 
+                << vs[3] <<std::endl;
+      return 1;
+    }
+    process = cc[0];
+    aggregation = cc[1];
+    version = cc[2];
+
+    // assuming a sequencer with an underscore, change to 
+    // a colon so it is in run range format
+    runs = vs[4].replace(vs[4].find("_"),1,":");
+
+  } else if(vs.size()==4) {
+
+    process = vs[0];
+    stream = vs[1];
+    aggregation = vs[2];
+    version = vs[3];
+    runs = "";
+
+  } else {
+    std::cout << "ERROR - source did not have 6 fields (for a file name)" << std::endl;
+    std::cout << "           or 4 fields (for a parameter listing)" << std::endl;
+    return 1;
+  }
+
+  // default values
+  if(aggregation.empty()) aggregation = "file";
+  if(version.empty()) version = "0";
+
+  if(verbose_>5) {
+    std::cout << "Parsed source string: "<< ss << std::endl;
+    std::cout << "process: " << process << std::endl;
+    std::cout << "stream: " << stream<< std::endl;
+    std::cout << "aggregation: " << aggregation << std::endl;
+    std::cout << "version: " << version << std::endl;
+    std::cout << "runs: " << runs << std::endl;
+  }
+
+  source = DqmSource(-1,process,stream,aggregation,std::stoi(version));
+
+  return 0;
+}
+
+//***********************************************************
+// parse string into a DqmValue
+
+int mu2e::DqmTool::parseValue(DqmValue& rvalue, const std::string& vv) {
+
+  //vv should be a comma-separated list of 
+  // group,subgroup,name,value,sigma,code
+
+  StringVec vs = splitString(vv);
+  
+  std::string group,subgroup,name,value,sigma;
+  int code;
+
+  if(vs.size()!=6) {
+    std::cout << "ERROR - not 6 items in value statement: "
+              << vv <<std::endl;
+    return 1;
+  }
+
+
+  if(vs[0].empty()) {
+    std::cout << "ERROR - required 'group' field is empty in value statement : " 
+              << vv << std::endl;
+    return 1;
+  }
+  if(vs[2].empty()) {
+    std::cout << "ERROR - required 'name' field is empty in value statement : " 
+              << vv << std::endl;
+    return 1;
+  }
+  if(vs[3].empty()) vs[3] = "0.0";
+  if(vs[4].empty()) vs[4] = "-1";
+  if(vs[5].empty()) vs[5] = "0";
+
+  group = vs[0];
+  subgroup = vs[1];
+  name = vs[2];
+  value = vs[3];
+  sigma = vs[4];
+  code = std::stoi(vs[5]);
+
+
+  if(verbose_>5) {
+    std::cout << "Parsed value string: "<< vv << std::endl;
+    std::cout << "group: " << group << std::endl;
+    std::cout << "subgroup: " << subgroup << std::endl;
+    std::cout << "name: " << name << std::endl;
+    std::cout << "value: " << value << std::endl;
+    std::cout << "sigma: " << sigma << std::endl;
+    std::cout << "code: " << code << std::endl;
+  }
+
+  rvalue = DqmValue(group,subgroup,name,value,sigma,code);
+
+  return 0;
+}
+
+
+
+//***********************************************************
+// split into words, respecting quoted strings
+
+mu2e::DqmTool::StringVec 
+mu2e::DqmTool::splitString(const std::string &command, char del) {
+
+  using namespace boost;
+
+  if(del=='X') { // try to discover the delimitor
+    int nd = 0;
+    for(char c : command) if(c=='.') nd++;
+    int nc = 0;
+    for(char c : command) if(c==',') nc++;
+    del = ',';
+    if(nd>nc) del = '.';
+  }
+
+  StringVec sv;
+
+  escaped_list_separator<char> els('\\', del, '"');
+  tokenizer<escaped_list_separator<char>> tok(command, els);
+  for (tokenizer<escaped_list_separator<char>>::iterator beg = tok.begin();
+       beg != tok.end(); ++beg) {
+    std::string ss(*beg);
+    boost::trim(ss);
+    sv.emplace_back(ss);
+  }
+
+  return sv;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::parseGeneral() {
+
+  if (args_.size() == 0) {
+    usage();
+    return 1;
+  }
+  if (args_[0] == "-h" || args_[0] == "--help") {
+    usage();
+    return 1;
+  }
+
+  // this is the action word, like "commit-source"
+  action_ = args_[0];
+
+  size_t ipt = 1; // starting after the action word
+
+  while (ipt < args_.size()) {
+
+    if (args_[ipt] == "-h" || args_[ipt] == "--help") {
+      // help for this action word
+      usage(true);
+      return 1;
+
+    } else if (args_[ipt] == "--verbose") {
+
+      if (ipt == args_.size() - 1) {
+        std::cout << "ERROR no verbose value" << std::endl;
+        return 1;
+      }
+      if (!std::isdigit(args_[ipt + 1][0])) {
+        std::cout << "ERROR verbose value is not a number " << std::endl;
+        return 1;
+      }
+      verbose_ = std::stoi(args_[ipt + 1]);
+      ipt = ipt + 2;
+
+    } else {
+
+      // whatever is not parsed here is left for the action to interpret
+      actionArgs_.emplace_back(args_[ipt]);
+      ipt++;
+    }
+
+  } // loop over args
+
+  if (verbose_ > 5) {
+    std::cout << "Parsed general arguments:" << std::endl;
+    std::cout << "    verbose = " << verbose_ << std::endl;
+  }
+
+  return 0;
+}
+
+//***********************************************************
+// the routine chosen by the action has loaded argMap_
+// with a list of allowed arguments with defaults, now see how they
+// match to actionArgs, the actual command line arguments
+
+int mu2e::DqmTool::parseAction() {
+
+  size_t ipt = 0;
+  while (ipt < actionArgs_.size()) {
+    if(actionArgs_[ipt].substr(0,2) != "--" ) {
+      std::cout << "ERROR - action arguments did not start with a qualifier"  << std::endl;
+      return 1;
+    }
+    std::string aa = actionArgs_[ipt].substr(2,std::string::npos);
+    auto it = argMap_.find(aa);
+    if (it == argMap_.end()) {
+      std::cout << "ERROR - unknown argument " << actionArgs_[ipt] << std::endl;
+      return 1;
+    }
+    if (ipt == actionArgs_.size() - 1 || actionArgs_[ipt + 1][0] == '-') {
+      it->second = "FOUND"; // arg with no value is simply found present
+      ipt++;
+    } else {
+      it->second = actionArgs_[ipt + 1];
+      ipt = ipt + 2;
+    }
+  }
+
+  if (verbose_ > 5) {
+    std::cout << "Parsed action for " << action_ << std::endl;
+    for (auto const &aa : argMap_) {
+      std::cout << "    " << aa.first << " = " << aa.second << std::endl;
+    }
+  }
+
+  return 0;
+}
+
+
+//***********************************************************
+// start from the command string
+void mu2e::DqmTool::usage(bool inAction) {
+
+  if(action_=="" || action_=="help") {
+    std::cout << 
+      " \n"
+      " dqmTool ACTION [OPTIONS]\n"
+      " \n"
+      " Perform basic DQM database maintenance functions.  The action \n"
+      " determines what to do, and OPTIONS refine it.  \n"
+      " Use dqmTool ACTION --help for lists of options for that action.\n"
+      " \n"
+      " Global options:\n"
+      "   --verbose <level>, an integer 0-10\n"
+      " \n"
+      " <ACTION>\n"
+      "    print-sources : print all sources (such as files)\n"
+      "    print-intervals : print all run/time intervals of sources\n"
+      "    print-values : print all value names \n"
+      "    print-numbers : print al materic numbers\n"
+      "    commit-value : insert a (or set) metric number\n"
+      " \n"
+      <<std::endl;
+  } else if(action_=="print-sources") {
+    std::cout << 
+      " \n"
+      " dqmTool print-sources [OPTIONS]\n"
+      "   Print the recorded sources of metrics\n"
+      " \n"
+      " [OPTIONS]\n"
+      "    --heading : print columns headings too\n"
+      " \n"
+      << std::endl;
+  } else if(action_=="print-intervals") {
+    std::cout << 
+      " \n"
+      " dqmTool print-intervals [OPTIONS]\n"
+      "   Print the recorded intervals for sources of metrics\n"
+      " \n"
+      " [OPTIONS]\n"
+      "    --heading : print columns headings too\n"
+      " \n"
+      << std::endl;
+  } else if(action_=="print-values") {
+    std::cout << 
+      " \n"
+      " dqmTool print-values [OPTIONS]\n"
+      "   Print the recorded names of the metrics\n"
+      " \n"
+      " [OPTIONS]\n"
+      "    --heading : print columns headings too\n"
+      " \n"
+      << std::endl;
+  } else if(action_=="print-numbers") {
+    std::cout << 
+      " \n"
+      " dqmTool print-numbers [OPTIONS]\n"
+      "   Print the recorded metrics\n"
+      " \n"
+      " [OPTIONS]\n"
+      "    --heading : print columns headings too\n"
+      " \n"
+      << std::endl;
+  } else if(action_=="commit-value") {
+    std::cout << 
+      " \n"
+      " dqmTool commit-value [OPTIONS]\n"
+      " \n"
+      " \n"
+      " [OPTIONS]\n"
+      "    --source STRING : name of the DQM histogram source file\n"
+      "         or a csv string like \"pass1,ele,file,0\" \n"
+      "    --runs STRING : run period like \"1100:0-1101:999999\" (optional) \n"
+      "    --start STRING : start of DQM interval, like \"2022-01-01T14:00:00\" (optional) \n"
+      "    --end STRING : end of DQM interval, like \"2022-01-01T14:00:00\" (optional) \n"
+      "    --value STRING : either a csv string like \"cal,disk0,meanE,20.0,0.1,0\" \n"
+      "           or a filespec of a text file containing csv strings \n"
+      " \n"
+      " \n"
+      << std::endl;
+  } else if(action_=="unique-value") {
+    std::cout << 
+      " \n"
+      " dqmTool unique-value [OPTIONS]\n"
+      " \n"
+      " .\n"
+      " \n"
+      " [OPTIONS]\n"
+      "    --name NAME : name of the table\n"
+      "    --user USERNAME : only print tables committed by this user \n"
+      "    --cid CID : only print contents for this cid \n"
+      " \n"
+      << std::endl;
+  }
+
+}
