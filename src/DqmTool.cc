@@ -248,8 +248,9 @@ int mu2e::DqmTool::commitValue() {
 
   int iid = -1;
 
-  command="select iid from dqm.intervals where start_run="
-    +std::to_string(time.iov().startRun())
+  command="select iid from dqm.intervals where sid="
+    +std::to_string(sid)
+    +" and start_run="+std::to_string(time.iov().startRun())
     +" and start_subrun="+std::to_string(time.iov().startSubrun())
     +" and end_run="+std::to_string(time.iov().endRun())
     +" and end_subrun="+std::to_string(time.iov().endSubrun())
