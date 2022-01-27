@@ -9,6 +9,7 @@
 #include <boost/algorithm/string/split.hpp>
 #include <boost/tokenizer.hpp>
 #include <string>
+#include <map>
 
 mu2e::DqmTool::DqmTool() : verbose_(0) {}
 
@@ -383,16 +384,14 @@ int mu2e::DqmTool::printSources() {
   rc = parseAction();
   if(rc!=0) return rc;
 
-  std::string command("select sid,process,stream,aggregation,version from dqm.sources");
-
-  rc = sql_.connect();
+  std::string table("dqm.sources");
+  std::string select("*");
+  StringVec where;
+  std::string order;
+  result_.clear();
+  rc = reader_.query(result_,select,table,where,order);
   if(rc) return rc;
 
-  rc = sql_.execute(command, result_);
-  if(rc) return rc;
-
-  rc = sql_.disconnect();
-  if(rc) return rc;
 
   if(!argMap_["heading"].empty()) {
     result_ = "sid, process, stream, aggregation, version\n"+result_;
@@ -410,16 +409,14 @@ int mu2e::DqmTool::printIntervals() {
   rc = parseAction();
   if(rc!=0) return rc;
 
-  std::string command("select iid,sid,start_run,start_subrun,end_run,end_subrun,start_time,end_time from dqm.intervals");
-
-  rc = sql_.connect();
+  std::string table("dqm.intervals");
+  std::string select("*");
+  StringVec where;
+  std::string order;
+  result_.clear();
+  rc = reader_.query(result_,select,table,where,order);
   if(rc) return rc;
 
-  rc = sql_.execute(command, result_);
-  if(rc) return rc;
-
-  rc = sql_.disconnect();
-  if(rc) return rc;
 
   if(!argMap_["heading"].empty()) {
     result_ = "iid, sid, start_run, start_subrun, end_run, end_subrun, start_time, end_time\n"+result_;
@@ -437,15 +434,12 @@ int mu2e::DqmTool::printValues() {
   rc = parseAction();
   if(rc!=0) return rc;
 
-  std::string command("select vid, groupx, subgroup, namex from dqm.values");
-
-  rc = sql_.connect();
-  if(rc) return rc;
-
-  rc = sql_.execute(command, result_);
-  if(rc) return rc;
-
-  rc = sql_.disconnect();
+  std::string table("dqm.values");
+  std::string select("*");
+  StringVec where;
+  std::string order;
+  result_.clear();
+  rc = reader_.query(result_,select,table,where,order);
   if(rc) return rc;
 
   if(!argMap_["heading"].empty()) {
@@ -461,25 +455,185 @@ int mu2e::DqmTool::printNumbers() {
 
   int rc = 0;
   argMap_["heading"] = "";
+  argMap_["source"] = "";
+  argMap_["value"] = "";
+  argMap_["expand"] = "";
   rc = parseAction();
   if(rc!=0) return rc;
 
-  std::string command("select nid, sid, iid, vid, valuex, sigma, code from dqm.numbers");
-
-  rc = sql_.connect();
-  if(rc) return rc;
-
-  rc = sql_.execute(command, result_);
-  if(rc) return rc;
-
-  rc = sql_.disconnect();
-  if(rc) return rc;
-
-  if(!argMap_["heading"].empty()) {
-    result_ = "nid, sid, iid, vid, value, sigma, code\n"+result_;
+  int sid = -1;
+  if(!argMap_["source"].empty()) {
+    std::string& ss = argMap_["source"];
+    if( ss.find_first_not_of("0123456789") == std::string::npos ) {
+      sid = std::stoi(ss); // was an integer
+    } else { // is file name or csv
+      DqmSource source;
+      std::string runs;
+      rc = parseSource(source,runs,ss);
+      if(rc) return rc;
+      sid = lookupSid(source);
+      if( sid<0 ) {
+        std::cout << "ERROR - source could not be interpreted" << std::endl;
+        return 1;
+      }
+    }
   }
 
+  int vid = -1;
+  if(!argMap_["value"].empty()) {
+    std::string& vv = argMap_["value"];
+    if( vv.find_first_not_of("0123456789") == std::string::npos ) {
+      vid = std::stoi(vv); // was an integer
+    } else { // is csv
+      DqmValue value;
+      // parse value expects the value's number with the value description
+      rc = parseValue(value,vv+",0,0,0");
+      if(rc) return rc;
+      vid = lookupVid(value);
+      if( vid<0 ) {
+        std::cout << "ERROR - value could not be interpreted" << std::endl;
+        return 1;
+      }
+    }
+  }
+
+
+  std::string table = "dqm.numbers";
+  std::string select;
+  StringVec where;
+  if(sid>=0) where.emplace_back("sid:eq:"+std::to_string(sid));
+  if(vid>=0) where.emplace_back("vid:eq:"+std::to_string(vid));
+  std::string order("sid,nid,iid");
+
+  std::string result;
+  rc = reader_.query(result,select,table,where,order);
+  if(rc) return rc;
+
+  if(argMap_["expand"].empty()) {
+    if(argMap_["heading"].empty()) {
+      result_ = result;
+    } else {
+      result_ = "nid, sid, iid, vid, value, sigma, code\n"+result;
+    } 
+    return 0;
+  }
+
+  // if we came here, then we have to --expand the printout
+  // to include the text of source, value and interval
+  printSources();
+  std::string sources = result_;
+  auto ssv = splitString(sources,'\n');
+  ssv.pop_back(); // last entry is blank
+  std::map<int,std::string> smap;
+  for(auto const& ss : ssv) {
+    if(std::isdigit(ss[0])) { // if heading was set, ther ewill be a text line
+      auto ii = ss.find(',');
+      int ind = std::stoi(ss.substr(0,ii));
+      smap[ind] = ss;
+    }
+  }
+
+  printValues();
+  std::string values = result_;
+  auto vsv = splitString(values,'\n');
+  vsv.pop_back(); // last entry is blank
+  std::map<size_t,std::string> vmap;
+  for(auto const& ss : vsv) {
+    if(std::isdigit(ss[0])) {
+      auto ii = ss.find(',');
+      int ind = std::stoi(ss.substr(0,ii));
+      vmap[ind] = ss;
+    }
+  }
+
+
+  printIntervals();
+  std::string intervals = result_;
+  auto isv = splitString(intervals,'\n');
+  isv.pop_back(); // last entry is blank
+  std::map<size_t,std::string> imap;
+  for(auto const& ss : isv) {
+    if(std::isdigit(ss[0])) {
+      auto ii = ss.find(',');
+      int ind = std::stoi(ss.substr(0,ii));
+      imap[ind] = ss;
+    }
+  }
+
+  result_.clear();
+
+  auto rsv = splitString(result,'\n');
+  rsv.pop_back(); // last entry is blank
+  for(auto const& rs:rsv) {
+    auto rss =  splitString(rs,',');
+    std::cout << rss[0]<< "," << rss[4]<<","<< rss[5]<<","<< rss[6];
+    int ind;
+    ind = std::stoi(rss[1]);
+    std::cout << "  " << smap[ind];
+    ind = std::stoi(rss[3]);
+    std::cout << "  " << vmap[ind];
+    ind = std::stoi(rss[2]);
+    std::cout << "  " << imap[ind]<<"\n";
+  }
+
+
   return 0;
+}
+
+
+
+//***********************************************************
+
+int mu2e::DqmTool::lookupSid(DqmSource& source) {
+
+  int sid = -1;
+  int rc = 0;
+
+  std::string table = "dqm.sources";
+  std::string select = "sid";
+  StringVec where;
+  std::string order;
+  std::string csv;
+  where.emplace_back("process:eq:"+source.process());
+  where.emplace_back("stream:eq:"+source.stream());
+  where.emplace_back("aggregation:eq:"+source.aggregation());
+  where.emplace_back("version:eq:"+std::to_string(source.version()));
+  rc = reader_.query(csv,select,table,where,order);
+  if(rc) return rc;
+
+  std::cout << "debug sid csv "<<csv<<std::endl;
+  if( !csv.empty() ) {
+    sid = std::stoi(csv);
+  }
+
+  return sid;
+}
+
+
+//***********************************************************
+
+int mu2e::DqmTool::lookupVid(DqmValue& value) {
+
+  int vid = -1;
+  int rc = 0;
+
+  std::string table = "dqm.values";
+  std::string select = "vid";
+  StringVec where;
+  std::string order;
+  std::string csv;
+  where.emplace_back("groupx:eq:"+value.group());
+  where.emplace_back("subgroup:eq:"+value.subgroup());
+  where.emplace_back("namex:eq:"+value.name());
+  rc = reader_.query(csv,select,table,where,order);
+  if(rc) return rc;
+
+  std::cout << "debug vid csv "<<csv<<std::endl;
+  if( !csv.empty() ) {
+    vid = std::stoi(csv);
+  }
+
+  return vid;
 }
 
 
@@ -803,6 +957,20 @@ void mu2e::DqmTool::usage(bool inAction) {
       " \n"
       " [OPTIONS]\n"
       "    --heading : print columns headings too\n"
+      "    --source : only print numbers with this source\n"
+      "         may be sid, csv or file name\n"
+      "    --value  : only print numbers with this value (name)\n"
+      "         may be vid or csv \n"
+      "    --expand : expand the id values into strings\n"
+      "    --expand : expand the id values into strings\n"
+      "  \n"
+      "  Examples:\n"
+      "    dqmTool print-numbers --heading\n"
+      "    dqmTool print-numbers --source 13 --value 2\n"
+      "    dqmTool print-numbers --source ntd.mu2e.DQM_strmA.test_file_000.0_0.root\n"
+      "    dqmTool print-numbers --source \"test,strmB,file,0\"  \\\n"
+      "                   --value \"2,det0,subgroup0,var0\"\n"
+      "  \n"
       " \n"
       << std::endl;
   } else if(action_=="commit-value") {

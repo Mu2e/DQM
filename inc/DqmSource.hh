@@ -23,6 +23,8 @@ public:
   const std::string &stream() const { return stream_; }
   const std::string &aggregation() const { return aggregation_; }
   int version() const { return version_; }
+  std::string csv() const { return process_+","+stream_+","
+      +aggregation_+","+std::to_string(version_); }
 
   void setSid(int sid) { sid_ = sid; }
 

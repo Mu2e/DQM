@@ -33,6 +33,8 @@ namespace mu2e {
     const std::string& sigmaStr() const { return sigmaStr_; }
     float sigma() const { return sigma_; }
     int   code() const { return code_; }
+    std::string csv() const { return group_+","+subgroup_+","+name_+","
+        +valueStr_+","+sigmaStr_+","+std::to_string(code_);}
     
   private:
     std::string group_;
