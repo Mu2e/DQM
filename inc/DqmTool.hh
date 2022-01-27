@@ -24,8 +24,10 @@ public:
 
   DqmTool();
 
+  // run a database command (see actions)
   int run(const std::string& arg);
   int run(const StringVec&  args);
+  // the result of the command, in a string with embedded '\n'
   std::string getResult() { return result_; }
 
 private:
@@ -41,17 +43,25 @@ private:
   int printValues();
   int printNumbers();
 
+  // give the process, stream etc in a source, lookup sid in db
   int lookupSid(DqmSource& source);
+  // give the grou, subgroup etc in a value, lookup vid in db
+  int lookupVid(DqmValue& value);
+  // given a string, a file name or csv, parse it into a DqmSource
   int parseSource(DqmSource& source, std::string& runs, const std::string& ss);
+  // given a string, csv, parse it into a DqmValue
   int parseValue(DqmValue& value, const std::string& vv);
+  // tokenize a string, if del=='X' try several
   StringVec splitString(const std::string& command, char del='X');
+  // parse the general arguments, lik e"verbose"
   int parseGeneral();
+  // parse the action argument (like "print-values")
   int parseAction();
 
-  StringVec args_;
-  std::string action_;
-  StringVec actionArgs_;
-  ArgMap argMap_;
+  StringVec args_; // all the args
+  std::string action_;  // action, parsed from arg
+  StringVec actionArgs_; // args to the action
+  ArgMap argMap_;  // map of ["option"] = value 
   int verbose_;
   int dryrun_;
   std::string result_;

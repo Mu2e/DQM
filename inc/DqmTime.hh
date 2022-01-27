@@ -24,6 +24,9 @@ public:
   const DbIoV& iov() const { return iov_; }
   const std::string& startTime() const { return startTime_; }
   const std::string& endTime() const { return endTime_; }
+  std::string csv() const { return std::to_string(startRun_)+","
+      +std::to_string(startSubrun_)+","+std::to_string(endRun_)+","
+      +std::to_string(endSubrun_)+","+startTime_+","+endTime_;}
 
 private:
   DbIoV iov_;
