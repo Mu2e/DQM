@@ -16,10 +16,30 @@ physics :
       digiTag : SelectRecoMC
       clusterTag : CaloClusterMaker
     }
+    dqmStr : {
+      module_type : DqmStr
+      digiTag : SelectRecoMC
+      adcTag  : SelectRecoMC
+      flagTag : SelectRecoMC
+    }
+    dqmTrkKFFDeM : {
+      module_type : DqmTrk
+      seedTag : KFFDeM
+    }
+    dqmTrkKFFDeP : {
+      module_type : DqmTrk
+      seedTag : KFFDeP
+    }
+    dqmCrv : {
+      module_type : DqmCrv
+      digiTag : SelectRecoMC
+      recoTag : SelectRecoMC
+      clusTag : SelectRecoMC
+    }
   }
 
   MyTrigPath : []
-  MyEndPath : [ dqmCal ]
+  MyEndPath : [ dqmCal, dqmStr, dqmTrkKFFDeM, dqmTrkKFFDeP, dqmCrv ]
 }
 
 services.TFileService.fileName : "dqm.root"

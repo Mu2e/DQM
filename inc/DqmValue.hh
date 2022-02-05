@@ -6,13 +6,14 @@
 //
 
 #include <string>
+#include <vector>
 
 namespace mu2e {
 
   class DqmValue {
   public:
 
-    enum codeValues { OK=0, lowStats=1, missing=2 };
+    enum codeValues { OK=0, lowStats=1, missing=2, error=3 };
 
     DqmValue() {}
     DqmValue(const std::string& group, 
@@ -21,30 +22,30 @@ namespace mu2e {
              const std::string& value, 
              const std::string& sigma, 
              int code=0):
-             group_(group),subgroup_(subgroup),name_(name),
-             valueStr_(value),value_(std::stof(value)),
-             sigmaStr_(sigma),sigma_(std::stof(value)),code_(code) {}
+             _group(group),_subgroup(subgroup),_name(name),
+             _valueStr(value),_value(std::stof(value)),
+             _sigmaStr(sigma),_sigma(std::stof(value)),_code(code) {}
 
-    const std::string& group() const { return group_; }
-    const std::string& subgroup() const { return subgroup_; }
-    const std::string& name() const { return name_; }
-    const std::string& valueStr() const { return valueStr_; }
-    float value() const { return value_; }
-    const std::string& sigmaStr() const { return sigmaStr_; }
-    float sigma() const { return sigma_; }
-    int   code() const { return code_; }
-    std::string csv() const { return group_+","+subgroup_+","+name_+","
-        +valueStr_+","+sigmaStr_+","+std::to_string(code_);}
+    const std::string& group() const { return _group; }
+    const std::string& subgroup() const { return _subgroup; }
+    const std::string& name() const { return _name; }
+    const std::string& valueStr() const { return _valueStr; }
+    float value() const { return _value; }
+    const std::string& sigmaStr() const { return _sigmaStr; }
+    float sigma() const { return _sigma; }
+    int   code() const { return _code; }
+    std::string csv() const { return _group+","+_subgroup+","+_name+","
+        +_valueStr+","+_sigmaStr+","+std::to_string(_code);}
     
   private:
-    std::string group_;
-    std::string subgroup_;
-    std::string name_;
-    std::string valueStr_;
-    float value_;
-    std::string sigmaStr_;
-    float sigma_;
-    int   code_;
+    std::string _group;
+    std::string _subgroup;
+    std::string _name;
+    std::string _valueStr;
+    float _value;
+    std::string _sigmaStr;
+    float _sigma;
+    int   _code;
   };
   
   typedef std::vector<DqmValue> DqmValueCollection;

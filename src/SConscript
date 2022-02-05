@@ -9,12 +9,14 @@ Import('mu2e_helper')
 
 helper=mu2e_helper(env);
 rootlibs  = env['ROOTLIBS']
+babarlibs = env['BABARLIBS']
 
 mainlib = helper.make_mainlib ( [ 'mu2e_DbService', 
                                   'mu2e_DbTables', 
                                   'cetlib', 
                                   'cetlib_except',
-                                  'pq' ] )
+                                  'pq',
+                                  rootlibs ] )
 
 helper.make_plugins( [ mainlib,
                        'mu2e_Mu2eInterfaces',
@@ -24,6 +26,9 @@ helper.make_plugins( [ mainlib,
                        'mu2e_GeometryService',
                        'mu2e_CalorimeterGeom',
                        'mu2e_CaloCluster',
+                       babarlibs,
+                       'Trajectory',
+                       'General',
                        'art_Framework_Core',
                        'art_Framework_Principal',
                        'art_Persistency_Common',
@@ -37,7 +42,6 @@ helper.make_plugins( [ mainlib,
                        'cetlib_except',
                        'boost_filesystem',
                        'boost_system',
-                       'Core',
                        'art_Framework_Services_Registry',
                        'art_root_io_tfile_support',
                        'art_root_io_TFileService',
@@ -53,7 +57,7 @@ helper.make_bin("dqmTool",[ mainlib,
                             'cetlib_except',
                             'pq' ])
 
-helper.make_bin("dqmCal",[ mainlib, rootlibs ] )
+helper.make_bin("dqmMetrics",[ mainlib, rootlibs ] )
 
 ## turn pywrap.i into a python interface
 #helper.make_pywrap (['dqm'])
