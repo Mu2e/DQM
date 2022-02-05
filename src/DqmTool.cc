@@ -11,7 +11,7 @@
 #include <string>
 #include <map>
 
-mu2e::DqmTool::DqmTool() : verbose_(0) {}
+mu2e::DqmTool::DqmTool() : _verbose(0) {}
 
 
 //***********************************************************
@@ -25,7 +25,7 @@ int mu2e::DqmTool::run(const std::string &arg) {
 
 int mu2e::DqmTool::run(const StringVec &args) {
 
-  args_ = args;
+  _args = args;
 
   int rc;
   rc = parseGeneral();
@@ -34,18 +34,18 @@ int mu2e::DqmTool::run(const StringVec &args) {
   init();
 
 
-  if (action_ == "commit-value") {
+  if (_action == "commit-value") {
     rc = commitValue();
-  } else if (action_ == "print-sources") {
+  } else if (_action == "print-sources") {
     rc = printSources();
-  } else if (action_ == "print-intervals") {
+  } else if (_action == "print-intervals") {
     rc = printIntervals();
-  } else if (action_ == "print-values") {
+  } else if (_action == "print-values") {
     rc = printValues();
-  } else if (action_ == "print-numbers") {
+  } else if (_action == "print-numbers") {
     rc = printNumbers();
   } else {
-    std::cout << "Error - unknown action: " << action_ << std::endl;
+    std::cout << "Error - unknown action: " << _action << std::endl;
     return 1;
   }
 
@@ -60,12 +60,12 @@ int mu2e::DqmTool::init() {
   DbIdList idList; // read the connections info file
   DbId id = idList.getDbId("mu2e_dqm_prd");
 
-  reader_.setDbId(id);
-  reader_.setVerbose(verbose_);
-  reader_.setTimeVerbose(verbose_);
+  _reader.setDbId(id);
+  _reader.setVerbose(_verbose);
+  _reader.setTimeVerbose(_verbose);
 
-  sql_.setDbId(id);
-  sql_.setVerbose(verbose_);
+  _sql.setDbId(id);
+  _sql.setVerbose(_verbose);
 
   return 0;
 }
@@ -76,18 +76,18 @@ int mu2e::DqmTool::init() {
 int mu2e::DqmTool::commitValue() {
 
   int rc;
-  argMap_["source"] = "";
-  argMap_["runs"] = "";
-  argMap_["start"] = "";
-  argMap_["end"] = "";
-  argMap_["value"] = "";
+  _argMap["source"] = "";
+  _argMap["runs"] = "";
+  _argMap["start"] = "";
+  _argMap["end"] = "";
+  _argMap["value"] = "";
 
   rc = parseAction();
   if(rc) return rc;
 
   // **** interpret source (process/stream/aggregation/version)
 
-  std::string ss = argMap_["source"];
+  std::string ss = _argMap["source"];
   if(ss.empty()) {
     std::cout << "ERROR - commit-value requires --source" << std::endl;
     return 1;
@@ -103,9 +103,9 @@ int mu2e::DqmTool::commitValue() {
 
   // **** interpret time interval
 
-  std::string rn = argMap_["runs"];
-  std::string st = argMap_["start"];
-  std::string en = argMap_["end"];
+  std::string rn = _argMap["runs"];
+  std::string st = _argMap["start"];
+  std::string en = _argMap["end"];
 
   // if we got a start run from the file name, and the
   // expclicit run range parameter does not overwrite it, then use it
@@ -135,14 +135,14 @@ int mu2e::DqmTool::commitValue() {
 
 
   // **** interpret values
-  std::string vv = argMap_["value"];
+  std::string vv = _argMap["value"];
 
   if( vv.empty() ) {
     std::cout << "ERROR - commit-value requires --value" << std::endl;
     return 1;
   }
 
-  if(verbose_>2) {
+  if(_verbose>2) {
     std::cout <<"Running commit-source with parameters:" << std::endl;
     std::cout <<"source :" << ss << std::endl;
     std::cout <<"runs   :" << rn << std::endl;
@@ -172,7 +172,7 @@ int mu2e::DqmTool::commitValue() {
     while ( std::getline(myfile,line) ) {
       if(!line.empty()) values.emplace_back(line);
     }
-    if(verbose_>2) {
+    if(_verbose>2) {
       std::cout << "Read "<<values.size() <<" values from "<< vv << std::endl;
     }
   }
@@ -194,11 +194,11 @@ int mu2e::DqmTool::commitValue() {
 
   std::string  command,result;
 
-  rc = sql_.connect();
+  rc = _sql.connect();
   if(rc) return rc;
 
   command = "SET ROLE dqmWrite;";
-  rc = sql_.execute(command, result);
+  rc = _sql.execute(command, result);
   if(rc) return rc;
 
   // 1 ****** find or create the source ID 
@@ -209,13 +209,13 @@ int mu2e::DqmTool::commitValue() {
     +"' and stream='"+source.stream()
     +"' and aggregation='"+source.aggregation()
     +"' and version="+std::to_string(source.version())+";";
-  if(verbose_>4) {
+  if(_verbose>4) {
     std::cout << "Find sid for source" << std::endl;
     std::cout << "command: " << command << std::endl;
   }
-  rc = sql_.execute(command, result);
+  rc = _sql.execute(command, result);
   if(rc) return rc;
-  if(verbose_>4) {
+  if(_verbose>4) {
     std::cout << "result: "<< result << std::endl;
   }
 
@@ -229,18 +229,18 @@ int mu2e::DqmTool::commitValue() {
     +source.aggregation()+"',"
     +std::to_string(source.version())+") RETURNING sid;";
 
-    if(verbose_>4) {
+    if(_verbose>4) {
       std::cout << "committing source:" << std::endl;
       std::cout << "command: "<<command << std::endl;
     }
 
-    rc = sql_.execute(command, result);
+    rc = _sql.execute(command, result);
     if(rc) return rc;
     
     sid = std::stoi(result);
   }
 
-  if(verbose_>0) {
+  if(_verbose>0) {
     std::cout << "sid is "<<sid <<std::endl;
   }
 
@@ -257,13 +257,13 @@ int mu2e::DqmTool::commitValue() {
     +" and end_subrun="+std::to_string(time.iov().endSubrun())
     +" and start_time='"+time.startTime()+"'"
     +" and end_time='"+time.endTime()+"';";
-  if(verbose_>4) {
+  if(_verbose>4) {
     std::cout << "Find iid for interval" << std::endl;
     std::cout << "command: " << command << std::endl;
   }
-  rc = sql_.execute(command, result);
+  rc = _sql.execute(command, result);
   if(rc) return rc;
-  if(verbose_>4) {
+  if(_verbose>4) {
     std::cout << "result: "<< result << std::endl;
   }
 
@@ -280,18 +280,18 @@ int mu2e::DqmTool::commitValue() {
       +time.startTime()+"','"
       +time.endTime()+"') RETURNING iid;";
 
-    if(verbose_>4) {
+    if(_verbose>4) {
       std::cout << "committing source:" << std::endl;
       std::cout << "command: "<<command << std::endl;
     }
 
-    rc = sql_.execute(command, result);
+    rc = _sql.execute(command, result);
     if(rc) return rc;
     
     iid = std::stoi(result);
   }
 
-  if(verbose_>0) {
+  if(_verbose>0) {
     std::cout << "iid is "<<iid <<std::endl;
   }
 
@@ -303,15 +303,15 @@ int mu2e::DqmTool::commitValue() {
     command="select vid from dqm.values where groupx='"+value.group()
       +"' and subgroup='"+value.subgroup()
       +"' and namex='"+value.name()+"';";
-    if(verbose_>4) {
+    if(_verbose>4) {
       std::cout << "Find vid for value" << std::endl;
       std::cout << "command: " << command << std::endl;
     }
 
-    rc = sql_.execute(command, result);
+    rc = _sql.execute(command, result);
     if(rc) return rc;
 
-    if(verbose_>4) {
+    if(_verbose>4) {
       std::cout << "result: "<< result << std::endl;
     }
 
@@ -324,18 +324,18 @@ int mu2e::DqmTool::commitValue() {
     +value.subgroup()+"','"
     +value.name()+"') RETURNING vid;";
 
-    if(verbose_>4) {
+    if(_verbose>4) {
       std::cout << "committing source:" << std::endl;
       std::cout << "command: "<<command << std::endl;
     }
 
-    rc = sql_.execute(command, result);
+    rc = _sql.execute(command, result);
     if(rc) return rc;
     
     vid = std::stoi(result);
   }
 
-  if(verbose_>0) {
+  if(_verbose>0) {
     std::cout << "vid is "<< vid <<std::endl;
   }
 
@@ -352,22 +352,22 @@ int mu2e::DqmTool::commitValue() {
       +value.sigmaStr()+"',"
       +std::to_string(value.code())+") RETURNING nid;";
   
-    if(verbose_>4) {
+    if(_verbose>4) {
       std::cout << "committing source:" << std::endl;
       std::cout << "command: "<<command << std::endl;
     }
     
-    rc = sql_.execute(command, result);
+    rc = _sql.execute(command, result);
     if(rc) return rc;
     
     nid = std::stoi(result);
 
-    if(verbose_>0) {
+    if(_verbose>0) {
       std::cout << "new nid is "<< nid <<std::endl;
     }
   }
 
-  rc = sql_.disconnect();
+  rc = _sql.disconnect();
   if(rc) return rc;
 
   return 0;
@@ -380,7 +380,7 @@ int mu2e::DqmTool::commitValue() {
 int mu2e::DqmTool::printSources() {
 
   int rc = 0;
-  argMap_["heading"] = "";
+  _argMap["heading"] = "";
   rc = parseAction();
   if(rc!=0) return rc;
 
@@ -388,13 +388,13 @@ int mu2e::DqmTool::printSources() {
   std::string select("*");
   StringVec where;
   std::string order;
-  result_.clear();
-  rc = reader_.query(result_,select,table,where,order);
+  _result.clear();
+  rc = _reader.query(_result,select,table,where,order);
   if(rc) return rc;
 
 
-  if(!argMap_["heading"].empty()) {
-    result_ = "sid, process, stream, aggregation, version\n"+result_;
+  if(!_argMap["heading"].empty()) {
+    _result = "sid, process, stream, aggregation, version\n"+_result;
   }
 
   return 0;
@@ -405,7 +405,7 @@ int mu2e::DqmTool::printSources() {
 int mu2e::DqmTool::printIntervals() {
 
   int rc = 0;
-  argMap_["heading"] = "";
+  _argMap["heading"] = "";
   rc = parseAction();
   if(rc!=0) return rc;
 
@@ -413,13 +413,13 @@ int mu2e::DqmTool::printIntervals() {
   std::string select("*");
   StringVec where;
   std::string order;
-  result_.clear();
-  rc = reader_.query(result_,select,table,where,order);
+  _result.clear();
+  rc = _reader.query(_result,select,table,where,order);
   if(rc) return rc;
 
 
-  if(!argMap_["heading"].empty()) {
-    result_ = "iid, sid, start_run, start_subrun, end_run, end_subrun, start_time, end_time\n"+result_;
+  if(!_argMap["heading"].empty()) {
+    _result = "iid, sid, start_run, start_subrun, end_run, end_subrun, start_time, end_time\n"+_result;
   }
 
   return 0;
@@ -430,7 +430,7 @@ int mu2e::DqmTool::printIntervals() {
 int mu2e::DqmTool::printValues() {
 
   int rc = 0;
-  argMap_["heading"] = "";
+  _argMap["heading"] = "";
   rc = parseAction();
   if(rc!=0) return rc;
 
@@ -438,12 +438,12 @@ int mu2e::DqmTool::printValues() {
   std::string select("*");
   StringVec where;
   std::string order;
-  result_.clear();
-  rc = reader_.query(result_,select,table,where,order);
+  _result.clear();
+  rc = _reader.query(_result,select,table,where,order);
   if(rc) return rc;
 
-  if(!argMap_["heading"].empty()) {
-    result_ = "vid, group, subgroup, name\n"+result_;
+  if(!_argMap["heading"].empty()) {
+    _result = "vid, group, subgroup, name\n"+_result;
   }
 
   return 0;
@@ -454,16 +454,16 @@ int mu2e::DqmTool::printValues() {
 int mu2e::DqmTool::printNumbers() {
 
   int rc = 0;
-  argMap_["heading"] = "";
-  argMap_["source"] = "";
-  argMap_["value"] = "";
-  argMap_["expand"] = "";
+  _argMap["heading"] = "";
+  _argMap["source"] = "";
+  _argMap["value"] = "";
+  _argMap["expand"] = "";
   rc = parseAction();
   if(rc!=0) return rc;
 
   int sid = -1;
-  if(!argMap_["source"].empty()) {
-    std::string& ss = argMap_["source"];
+  if(!_argMap["source"].empty()) {
+    std::string& ss = _argMap["source"];
     if( ss.find_first_not_of("0123456789") == std::string::npos ) {
       sid = std::stoi(ss); // was an integer
     } else { // is file name or csv
@@ -480,8 +480,8 @@ int mu2e::DqmTool::printNumbers() {
   }
 
   int vid = -1;
-  if(!argMap_["value"].empty()) {
-    std::string& vv = argMap_["value"];
+  if(!_argMap["value"].empty()) {
+    std::string& vv = _argMap["value"];
     if( vv.find_first_not_of("0123456789") == std::string::npos ) {
       vid = std::stoi(vv); // was an integer
     } else { // is csv
@@ -506,14 +506,14 @@ int mu2e::DqmTool::printNumbers() {
   std::string order("sid,nid,iid");
 
   std::string result;
-  rc = reader_.query(result,select,table,where,order);
+  rc = _reader.query(result,select,table,where,order);
   if(rc) return rc;
 
-  if(argMap_["expand"].empty()) {
-    if(argMap_["heading"].empty()) {
-      result_ = result;
+  if(_argMap["expand"].empty()) {
+    if(_argMap["heading"].empty()) {
+      _result = result;
     } else {
-      result_ = "nid, sid, iid, vid, value, sigma, code\n"+result;
+      _result = "nid, sid, iid, vid, value, sigma, code\n"+result;
     } 
     return 0;
   }
@@ -521,7 +521,7 @@ int mu2e::DqmTool::printNumbers() {
   // if we came here, then we have to --expand the printout
   // to include the text of source, value and interval
   printSources();
-  std::string sources = result_;
+  std::string sources = _result;
   auto ssv = splitString(sources,'\n');
   ssv.pop_back(); // last entry is blank
   std::map<int,std::string> smap;
@@ -534,7 +534,7 @@ int mu2e::DqmTool::printNumbers() {
   }
 
   printValues();
-  std::string values = result_;
+  std::string values = _result;
   auto vsv = splitString(values,'\n');
   vsv.pop_back(); // last entry is blank
   std::map<size_t,std::string> vmap;
@@ -548,7 +548,7 @@ int mu2e::DqmTool::printNumbers() {
 
 
   printIntervals();
-  std::string intervals = result_;
+  std::string intervals = _result;
   auto isv = splitString(intervals,'\n');
   isv.pop_back(); // last entry is blank
   std::map<size_t,std::string> imap;
@@ -560,7 +560,7 @@ int mu2e::DqmTool::printNumbers() {
     }
   }
 
-  result_.clear();
+  _result.clear();
 
   auto rsv = splitString(result,'\n');
   rsv.pop_back(); // last entry is blank
@@ -598,7 +598,7 @@ int mu2e::DqmTool::lookupSid(DqmSource& source) {
   where.emplace_back("stream:eq:"+source.stream());
   where.emplace_back("aggregation:eq:"+source.aggregation());
   where.emplace_back("version:eq:"+std::to_string(source.version()));
-  rc = reader_.query(csv,select,table,where,order);
+  rc = _reader.query(csv,select,table,where,order);
   if(rc) return rc;
 
   std::cout << "debug sid csv "<<csv<<std::endl;
@@ -625,7 +625,7 @@ int mu2e::DqmTool::lookupVid(DqmValue& value) {
   where.emplace_back("groupx:eq:"+value.group());
   where.emplace_back("subgroup:eq:"+value.subgroup());
   where.emplace_back("namex:eq:"+value.name());
-  rc = reader_.query(csv,select,table,where,order);
+  rc = _reader.query(csv,select,table,where,order);
   if(rc) return rc;
 
   std::cout << "debug vid csv "<<csv<<std::endl;
@@ -697,7 +697,7 @@ int mu2e::DqmTool::parseSource(DqmSource& source, std::string& runs,
   if(aggregation.empty()) aggregation = "file";
   if(version.empty()) version = "0";
 
-  if(verbose_>5) {
+  if(_verbose>5) {
     std::cout << "Parsed source string: "<< ss << std::endl;
     std::cout << "process: " << process << std::endl;
     std::cout << "stream: " << stream<< std::endl;
@@ -753,7 +753,7 @@ int mu2e::DqmTool::parseValue(DqmValue& rvalue, const std::string& vv) {
   code = std::stoi(vs[5]);
 
 
-  if(verbose_>5) {
+  if(_verbose>5) {
     std::cout << "Parsed value string: "<< vv << std::endl;
     std::cout << "group: " << group << std::endl;
     std::cout << "subgroup: " << subgroup << std::endl;
@@ -805,88 +805,88 @@ mu2e::DqmTool::splitString(const std::string &command, char del) {
 
 int mu2e::DqmTool::parseGeneral() {
 
-  if (args_.size() == 0) {
+  if (_args.size() == 0) {
     usage();
     return 1;
   }
-  if (args_[0] == "-h" || args_[0] == "--help") {
+  if (_args[0] == "-h" || _args[0] == "--help") {
     usage();
     return 1;
   }
 
   // this is the action word, like "commit-source"
-  action_ = args_[0];
+  _action = _args[0];
 
   size_t ipt = 1; // starting after the action word
 
-  while (ipt < args_.size()) {
+  while (ipt < _args.size()) {
 
-    if (args_[ipt] == "-h" || args_[ipt] == "--help") {
+    if (_args[ipt] == "-h" || _args[ipt] == "--help") {
       // help for this action word
       usage(true);
       return 1;
 
-    } else if (args_[ipt] == "--verbose") {
+    } else if (_args[ipt] == "--verbose") {
 
-      if (ipt == args_.size() - 1) {
+      if (ipt == _args.size() - 1) {
         std::cout << "ERROR no verbose value" << std::endl;
         return 1;
       }
-      if (!std::isdigit(args_[ipt + 1][0])) {
+      if (!std::isdigit(_args[ipt + 1][0])) {
         std::cout << "ERROR verbose value is not a number " << std::endl;
         return 1;
       }
-      verbose_ = std::stoi(args_[ipt + 1]);
+      _verbose = std::stoi(_args[ipt + 1]);
       ipt = ipt + 2;
 
     } else {
 
       // whatever is not parsed here is left for the action to interpret
-      actionArgs_.emplace_back(args_[ipt]);
+      _actionArgs.emplace_back(_args[ipt]);
       ipt++;
     }
 
   } // loop over args
 
-  if (verbose_ > 5) {
+  if (_verbose > 5) {
     std::cout << "Parsed general arguments:" << std::endl;
-    std::cout << "    verbose = " << verbose_ << std::endl;
+    std::cout << "    verbose = " << _verbose << std::endl;
   }
 
   return 0;
 }
 
 //***********************************************************
-// the routine chosen by the action has loaded argMap_
+// the routine chosen by the action has loaded _argMap
 // with a list of allowed arguments with defaults, now see how they
 // match to actionArgs, the actual command line arguments
 
 int mu2e::DqmTool::parseAction() {
 
   size_t ipt = 0;
-  while (ipt < actionArgs_.size()) {
-    if(actionArgs_[ipt].substr(0,2) != "--" ) {
+  while (ipt < _actionArgs.size()) {
+    if(_actionArgs[ipt].substr(0,2) != "--" ) {
       std::cout << "ERROR - action arguments did not start with a qualifier"  << std::endl;
       return 1;
     }
-    std::string aa = actionArgs_[ipt].substr(2,std::string::npos);
-    auto it = argMap_.find(aa);
-    if (it == argMap_.end()) {
-      std::cout << "ERROR - unknown argument " << actionArgs_[ipt] << std::endl;
+    std::string aa = _actionArgs[ipt].substr(2,std::string::npos);
+    auto it = _argMap.find(aa);
+    if (it == _argMap.end()) {
+      std::cout << "ERROR - unknown argument " << _actionArgs[ipt] << std::endl;
       return 1;
     }
-    if (ipt == actionArgs_.size() - 1 || actionArgs_[ipt + 1][0] == '-') {
+    if (ipt == _actionArgs.size() - 1 || _actionArgs[ipt + 1][0] == '-') {
       it->second = "FOUND"; // arg with no value is simply found present
       ipt++;
     } else {
-      it->second = actionArgs_[ipt + 1];
+      it->second = _actionArgs[ipt + 1];
       ipt = ipt + 2;
     }
   }
 
-  if (verbose_ > 5) {
-    std::cout << "Parsed action for " << action_ << std::endl;
-    for (auto const &aa : argMap_) {
+  if (_verbose > 5) {
+    std::cout << "Parsed action for " << _action << std::endl;
+    for (auto const &aa : _argMap) {
       std::cout << "    " << aa.first << " = " << aa.second << std::endl;
     }
   }
@@ -899,7 +899,7 @@ int mu2e::DqmTool::parseAction() {
 // start from the command string
 void mu2e::DqmTool::usage(bool inAction) {
 
-  if(action_=="" || action_=="help") {
+  if(_action=="" || _action=="help") {
     std::cout << 
       " \n"
       " dqmTool ACTION [OPTIONS]\n"
@@ -919,7 +919,7 @@ void mu2e::DqmTool::usage(bool inAction) {
       "    commit-value : insert a (or set) metric number\n"
       " \n"
       <<std::endl;
-  } else if(action_=="print-sources") {
+  } else if(_action=="print-sources") {
     std::cout << 
       " \n"
       " dqmTool print-sources [OPTIONS]\n"
@@ -929,7 +929,7 @@ void mu2e::DqmTool::usage(bool inAction) {
       "    --heading : print columns headings too\n"
       " \n"
       << std::endl;
-  } else if(action_=="print-intervals") {
+  } else if(_action=="print-intervals") {
     std::cout << 
       " \n"
       " dqmTool print-intervals [OPTIONS]\n"
@@ -939,7 +939,7 @@ void mu2e::DqmTool::usage(bool inAction) {
       "    --heading : print columns headings too\n"
       " \n"
       << std::endl;
-  } else if(action_=="print-values") {
+  } else if(_action=="print-values") {
     std::cout << 
       " \n"
       " dqmTool print-values [OPTIONS]\n"
@@ -949,7 +949,7 @@ void mu2e::DqmTool::usage(bool inAction) {
       "    --heading : print columns headings too\n"
       " \n"
       << std::endl;
-  } else if(action_=="print-numbers") {
+  } else if(_action=="print-numbers") {
     std::cout << 
       " \n"
       " dqmTool print-numbers [OPTIONS]\n"
@@ -962,7 +962,6 @@ void mu2e::DqmTool::usage(bool inAction) {
       "    --value  : only print numbers with this value (name)\n"
       "         may be vid or csv \n"
       "    --expand : expand the id values into strings\n"
-      "    --expand : expand the id values into strings\n"
       "  \n"
       "  Examples:\n"
       "    dqmTool print-numbers --heading\n"
@@ -973,7 +972,7 @@ void mu2e::DqmTool::usage(bool inAction) {
       "  \n"
       " \n"
       << std::endl;
-  } else if(action_=="commit-value") {
+  } else if(_action=="commit-value") {
     std::cout << 
       " \n"
       " dqmTool commit-value [OPTIONS]\n"
@@ -990,7 +989,7 @@ void mu2e::DqmTool::usage(bool inAction) {
       " \n"
       " \n"
       << std::endl;
-  } else if(action_=="unique-value") {
+  } else if(_action=="unique-value") {
     std::cout << 
       " \n"
       " dqmTool unique-value [OPTIONS]\n"

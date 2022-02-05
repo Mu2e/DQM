@@ -28,7 +28,7 @@ public:
   int run(const std::string& arg);
   int run(const StringVec&  args);
   // the result of the command, in a string with embedded '\n'
-  std::string getResult() { return result_; }
+  std::string getResult() { return _result; }
 
 private:
   typedef std::map<std::string, std::string> ArgMap;
@@ -53,21 +53,21 @@ private:
   int parseValue(DqmValue& value, const std::string& vv);
   // tokenize a string, if del=='X' try several
   StringVec splitString(const std::string& command, char del='X');
-  // parse the general arguments, lik e"verbose"
+  // parse the general arguments, like "verbose"
   int parseGeneral();
   // parse the action argument (like "print-values")
   int parseAction();
 
-  StringVec args_; // all the args
-  std::string action_;  // action, parsed from arg
-  StringVec actionArgs_; // args to the action
-  ArgMap argMap_;  // map of ["option"] = value 
-  int verbose_;
-  int dryrun_;
-  std::string result_;
+  StringVec _args; // all the args
+  std::string _action;  // action, parsed from arg
+  StringVec _actionArgs; // args to the action
+  ArgMap _argMap;  // map of ["option"] = value 
+  int _verbose;
+  int _dryrun;
+  std::string _result;
 
-  DbReader reader_;
-  DbSql sql_;
+  DbReader _reader;
+  DbSql _sql;
 };
 
 } // namespace mu2e

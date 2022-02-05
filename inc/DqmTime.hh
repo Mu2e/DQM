@@ -14,28 +14,28 @@ class DqmTime {
 public:
   DqmTime(int startRun, int startSubrun, int endRun, int endSubrun,
           const std::string& startTime, const std::string& endTime )
-    : iov_(startRun,startSubrun,endRun,endSubrun),
-        startTime_(startTime), endTime_(endTime) {}
+    : _iov(startRun,startSubrun,endRun,endSubrun),
+        _startTime(startTime), _endTime(endTime) {}
 
   DqmTime(const std::string& runRange,
           const std::string& startTime, const std::string& endTime )
-    : iov_(runRange), startTime_(startTime), endTime_(endTime) {}
+    : _iov(runRange), _startTime(startTime), _endTime(endTime) {}
 
-  const DbIoV& iov() const { return iov_; }
-  const std::string& startTime() const { return startTime_; }
-  const std::string& endTime() const { return endTime_; }
-  std::string csv() const { return std::to_string(startRun_)+","
-      +std::to_string(startSubrun_)+","+std::to_string(endRun_)+","
-      +std::to_string(endSubrun_)+","+startTime_+","+endTime_;}
+  const DbIoV& iov() const { return _iov; }
+  const std::string& startTime() const { return _startTime; }
+  const std::string& endTime() const { return _endTime; }
+  std::string csv() const { return std::to_string(_startRun)+","
+      +std::to_string(_startSubrun)+","+std::to_string(_endRun)+","
+      +std::to_string(_endSubrun)+","+_startTime+","+_endTime;}
 
 private:
-  DbIoV iov_;
-  std::string startTime_;
-  int startRun_;
-  int startSubrun_;
-  std::string endTime_;
-  int endRun_;
-  int endSubrun_;
+  DbIoV _iov;
+  std::string _startTime;
+  int _startRun;
+  int _startSubrun;
+  std::string _endTime;
+  int _endRun;
+  int _endSubrun;
 };
 
 typedef std::vector<DqmTime> DqmTimeCollection;
