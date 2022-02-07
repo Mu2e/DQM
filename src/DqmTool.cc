@@ -61,6 +61,7 @@ int mu2e::DqmTool::init() {
   DbId id = idList.getDbId("mu2e_dqm_prd");
 
   _reader.setDbId(id);
+  _reader.setUseCache(false);
   _reader.setVerbose(_verbose);
   _reader.setTimeVerbose(_verbose);
 
