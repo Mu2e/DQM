@@ -3,18 +3,17 @@
 
 #include "DQM/inc/DqmMetrics.hh"
 #include "TFile.h"
+#include <fstream>
 #include <string>
 #include <vector>
-#include <fstream>
 
-int main(int argc, char**argv) {
-
+int main(int argc, char** argv) {
   std::vector<std::string> words;
-  for(size_t i=1; i<size_t(argc);++i) {
+  for (size_t i = 1; i < size_t(argc); ++i) {
     words.emplace_back(argv[i]);
   }
 
-  TFile file(words[0].c_str(),"READONLY");
+  TFile file(words[0].c_str(), "READONLY");
 
   mu2e::DqmMetrics metrics(file);
   metrics.process();
@@ -25,4 +24,3 @@ int main(int argc, char**argv) {
 
   return 0;
 }
-

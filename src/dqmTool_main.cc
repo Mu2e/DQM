@@ -1,13 +1,12 @@
 
+#include "DQM/inc/DqmTool.hh"
+#include <iostream>
 #include <string>
 #include <vector>
-#include <iostream>
-#include "DQM/inc/DqmTool.hh"
 
-int main(int argc, char**argv) {
-
+int main(int argc, char** argv) {
   std::vector<std::string> words;
-  for(size_t i=1; i<size_t(argc);++i) {
+  for (size_t i = 1; i < size_t(argc); ++i) {
     words.emplace_back(argv[i]);
   }
 
