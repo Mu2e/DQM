@@ -9,9 +9,9 @@
 
 #include "DQM/inc/DqmSource.hh"
 #include "DQM/inc/DqmValue.hh"
-#include "Offline/DbTables/inc/DbIoV.hh"
 #include "Offline/DbService/inc/DbReader.hh"
 #include "Offline/DbService/inc/DbSql.hh"
+#include "Offline/DbTables/inc/DbIoV.hh"
 #include <map>
 #include <string>
 #include <vector>
@@ -19,21 +19,21 @@
 namespace mu2e {
 
 class DqmTool {
-public:
+ public:
   typedef std::vector<std::string> StringVec;
 
   DqmTool();
 
   // run a database command (see actions)
   int run(const std::string& arg);
-  int run(const StringVec&  args);
+  int run(const StringVec& args);
   // the result of the command, in a string with embedded '\n'
   std::string getResult() { return _result; }
 
-private:
+ private:
   typedef std::map<std::string, std::string> ArgMap;
 
-  void usage(bool inAction=false);
+  void usage(bool inAction = false);
   int init();
 
   int commitValue();
@@ -52,16 +52,16 @@ private:
   // given a string, csv, parse it into a DqmValue
   int parseValue(DqmValue& value, const std::string& vv);
   // tokenize a string, if del=='X' try several
-  StringVec splitString(const std::string& command, char del='X');
+  StringVec splitString(const std::string& command, char del = 'X');
   // parse the general arguments, like "verbose"
   int parseGeneral();
   // parse the action argument (like "print-values")
   int parseAction();
 
-  StringVec _args; // all the args
-  std::string _action;  // action, parsed from arg
-  StringVec _actionArgs; // args to the action
-  ArgMap _argMap;  // map of ["option"] = value 
+  StringVec _args;        // all the args
+  std::string _action;    // action, parsed from arg
+  StringVec _actionArgs;  // args to the action
+  ArgMap _argMap;         // map of ["option"] = value
   int _verbose;
   int _dryrun;
   std::string _result;
@@ -70,6 +70,6 @@ private:
   DbSql _sql;
 };
 
-} // namespace mu2e
+}  // namespace mu2e
 
 #endif
