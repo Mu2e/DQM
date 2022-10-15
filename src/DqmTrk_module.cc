@@ -67,7 +67,7 @@ class DqmTrk : public art::EDAnalyzer {
   TH1D* _hCCEoverP;
   TH1D* _hCCDt0;
   TH1D* _hCCDt;
-  TH1D* _hCCDOCA;
+  //TH1D* _hCCDOCA;
   TH1D* _hCChlen;
   TH1D* _hCCtlen;
   TH1D* _hHDrift;
@@ -120,8 +120,8 @@ void DqmTrk::beginJob() {
       tfs->make<TH1D>("CCEoverP", "Calo E Over Track P", 100, 0.0, 1.5);
   _hCCDt0 = tfs->make<TH1D>("CCDt0", "Calo t0 - Track t0", 100, -1.0, 25.0);
   _hCCDt = tfs->make<TH1D>("CCDt", "Calo time residual", 100, -5.0, 5.0);
-  _hCCDOCA =
-      tfs->make<TH1D>("CCDOCA", "Calo DOCA to Track", 100, -100.0, 100.0);
+  //_hCCDOCA =
+  //    tfs->make<TH1D>("CCDOCA", "Calo DOCA to Track", 100, -100.0, 100.0);
   _hCChlen = tfs->make<TH1D>("CChlen", "Calo POCA Depth", 100, -100.0, 500.0);
   _hCCtlen =
       tfs->make<TH1D>("CCtlen", "Calo POCA Track Length", 100, 1000.0, 5000.0);
@@ -239,7 +239,7 @@ void DqmTrk::analyze(const art::Event& event) {
         _hCCEoverP->Fill(ks.caloCluster()->energyDep() / p);
         _hCCDt0->Fill(chs.t0().t0() - t0);
         _hCCDt->Fill(chs.caloCluster()->time() - chs.t0().t0());
-        _hCCDOCA->Fill(chs.clusterAxisDOCA());
+        //_hCCDOCA->Fill(chs.clusterAxisDOCA());
         _hCChlen->Fill(chs.hitLen());
         _hCCtlen->Fill(chs.trkLen());
       }
