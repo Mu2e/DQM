@@ -186,4 +186,4 @@ void DqmStr::analyze(const art::Event& event) {
 }
 }  // namespace mu2e
 
-DEFINE_ART_MODULE(mu2e::DqmStr);
+DEFINE_ART_MODULE(mu2e::DqmStr)

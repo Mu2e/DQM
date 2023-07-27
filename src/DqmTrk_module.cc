@@ -270,4 +270,4 @@ void DqmTrk::analyze(const art::Event& event) {
 
 }  // namespace mu2e
 
-DEFINE_ART_MODULE(mu2e::DqmTrk);
+DEFINE_ART_MODULE(mu2e::DqmTrk)
