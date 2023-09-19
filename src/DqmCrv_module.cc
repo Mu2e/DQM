@@ -182,9 +182,9 @@ void DqmCrv::analyze(const art::Event& event) {
       _hcPE->Fill(cc.GetPEs());
       _hct->Fill(cc.GetStartTime());
       _hct2->Fill(cc.GetStartTime());
-      _hcx->Fill(cc.GetAvgCounterPos().x());
-      _hcy->Fill(cc.GetAvgCounterPos().y());
-      _hcz->Fill(cc.GetAvgCounterPos().z());
+      _hcx->Fill(cc.GetAvgHitPos().x());
+      _hcy->Fill(cc.GetAvgHitPos().y());
+      _hcz->Fill(cc.GetAvgHitPos().z());
     }
   }
 }
