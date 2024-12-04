@@ -8,8 +8,7 @@ physics.analyzers.dqmStr.digiTag : SelectRecoMC
 physics.analyzers.dqmStr.adcTag  : SelectRecoMC
 physics.analyzers.dqmStr.flagTag : ""
 
-physics.analyzers.dqmTrkKFFDeM.seedTag : KKDeM
-physics.analyzers.dqmTrkKFFDeP.seedTag : KKDeP
+physics.analyzers.dqmTrkKDe.seedTag : KKDe
 
 physics.analyzers.dqmCrv.digiTag : SelectRecoMC
 physics.analyzers.dqmCrv.recoTag : SelectRecoMC
