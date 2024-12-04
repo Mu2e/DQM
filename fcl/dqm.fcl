@@ -22,13 +22,9 @@ physics :
       adcTag  : SelectRecoMC
       flagTag : SelectRecoMC
     }
-    dqmTrkKFFDeM : {
+    dqmTrkKKDe : {
       module_type : DqmTrk
-      seedTag : KFFDeM
-    }
-    dqmTrkKFFDeP : {
-      module_type : DqmTrk
-      seedTag : KFFDeP
+      seedTag : KKDe
     }
     dqmCrv : {
       module_type : DqmCrv
@@ -39,7 +35,7 @@ physics :
   }
 
   MyTrigPath : []
-  MyEndPath : [ dqmCal, dqmStr, dqmTrkKFFDeM, dqmTrkKFFDeP, dqmCrv ]
+  MyEndPath : [ dqmCal, dqmStr, dqmTrkKKDe, dqmCrv ]
 }
 
 services.TFileService.fileName : "dqm.root"
