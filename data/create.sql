@@ -13,7 +13,7 @@ CREATE TABLE dqm.sources (
   process TEXT NOT NULL, 
   stream TEXT, 
   aggregation TEXT, 
-  version INTEGER,
+  version TEXT,
   CONSTRAINT sources_unique_combo UNIQUE (process,stream,aggregation,version),
   CONSTRAINT sources_pk PRIMARY KEY (sid) 
   );
