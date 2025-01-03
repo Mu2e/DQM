@@ -205,7 +205,7 @@ int mu2e::DqmTool::commitValue() {
   command = "select sid from dqm.sources where process='" + source.process() +
             "' and stream='" + source.stream() + "' and aggregation='" +
             source.aggregation() +
-            "' and version=" + std::to_string(source.version()) + ";";
+            "' and version='" + source.version() + "';";
   if (_verbose > 4) {
     std::cout << "Find sid for source" << std::endl;
     std::cout << "command: " << command << std::endl;
@@ -224,8 +224,8 @@ int mu2e::DqmTool::commitValue() {
         "INSERT INTO dqm.sources (process,stream,aggregation,version)  VALUES "
         "('" +
         source.process() + "','" + source.stream() + "','" +
-        source.aggregation() + "'," + std::to_string(source.version()) +
-        ") RETURNING sid;";
+        source.aggregation() + "','" + source.version() +
+        "') RETURNING sid;";
 
     if (_verbose > 4) {
       std::cout << "committing source:" << std::endl;
@@ -580,7 +580,7 @@ int mu2e::DqmTool::lookupSid(DqmSource& source) {
   where.emplace_back("process:eq:" + source.process());
   where.emplace_back("stream:eq:" + source.stream());
   where.emplace_back("aggregation:eq:" + source.aggregation());
-  where.emplace_back("version:eq:" + std::to_string(source.version()));
+  where.emplace_back("version:eq:" + source.version());
   rc = _reader.query(csv, select, table, where, order);
   if (rc) return rc;
 
@@ -685,7 +685,7 @@ int mu2e::DqmTool::parseSource(DqmSource& source, std::string& runs,
     std::cout << "runs: " << runs << std::endl;
   }
 
-  source = DqmSource(-1, process, stream, aggregation, std::stoi(version));
+  source = DqmSource(-1, process, stream, aggregation, version);
 
   return 0;
 }

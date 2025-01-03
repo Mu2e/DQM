@@ -14,7 +14,7 @@ class DqmSource {
  public:
   DqmSource() {}
   DqmSource(int sid, const std::string &process, const std::string &stream,
-            const std::string &aggregation, int version) :
+            const std::string &aggregation, const std::string& version) :
       _sid(sid),
       _process(process), _stream(stream), _aggregation(aggregation),
       _version(version) {}
@@ -23,10 +23,10 @@ class DqmSource {
   const std::string &process() const { return _process; }
   const std::string &stream() const { return _stream; }
   const std::string &aggregation() const { return _aggregation; }
-  int version() const { return _version; }
+  const std::string &version() const { return _version; }
   std::string csv() const {
     return _process + "," + _stream + "," + _aggregation + "," +
-           std::to_string(_version);
+           _version;
   }
 
   void setSid(int sid) { _sid = sid; }
@@ -36,7 +36,7 @@ class DqmSource {
   std::string _process;
   std::string _stream;
   std::string _aggregation;
-  int _version;
+  std::string _version;
 };
 
 typedef std::vector<DqmSource> DqmSourceCollection;
