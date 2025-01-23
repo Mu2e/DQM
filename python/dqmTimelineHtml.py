@@ -236,7 +236,7 @@ class timelineHtml:
                 times.append(di.stime)
                 runs.append(di.srun)
                 markers.append(di.version)
-                
+
         #print("times ",times)
         #print("times pd ", pd.to_datetime(times) )
         df = pd.DataFrame({'times':pd.to_datetime(times), 
@@ -244,7 +244,7 @@ class timelineHtml:
                            'data':pd.Series(data), 
                            'errors':pd.Series(errors),
                            'markers':pd.Series(markers)})
-            
+
         #print("df ",df)
         # px is plotly express line graph
         error_name = None
@@ -434,17 +434,17 @@ class timelineHtml:
                 State('timeline'+sip,'id') )
             def update_value(source,version,value,name):
                 ip = int(name[-2:])
-                print('value callback ',ip,source,version,value)
+                #print('value callback ',ip,source,version,value)
                 if ip >= len(self.plotlist):
                     raise dash.exceptions.PreventUpdate
                 self.plotlist[ip].source = source
 
                 valval = self.buildTimelineDDValue(ip)
-                print('debugcallb ',ip,value,valval)
+                #print('debugcallb ',ip,value,valval)
                 found = False
                 #print("value preloop")
                 for vv in valval:
-                    print("value in loop ",ip,vv['value'],value)
+                    #print("value in loop ",ip,vv['value'],value)
                     if vv['value'] == value:
                         print("value found true",ip)
                         found = True
@@ -463,7 +463,7 @@ class timelineHtml:
                     version = -1
                 self.plotlist[ip].version = version
 
-                print("value callback result ",ip,valval,verval,value,version)
+                #print("value callback result ",ip,valval,verval,value,version)
                 return valval,verval,value,version
 
 
@@ -480,7 +480,7 @@ class timelineHtml:
                 # dash not define dctx = dash.callback_context
                 if ip >= len(self.plotlist):
                     raise dash.exceptions.PreventUpdate
-                print('figure callback ',ip,source,value)
+                #print('figure callback ',ip,source,value)
                 self.plotlist[ip].source = source
                 self.plotlist[ip].version = version
                 self.plotlist[ip].value = value
