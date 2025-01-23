@@ -239,4 +239,5 @@ if __name__ == "__main__":
     args=parser.parse_args()
     DQM_df = create_DQM_df()
     extract_metrics(args.RootFile,DQM_df)
+#    print(DQM_df)
     output_dqm(args.RootFile,DQM_df)

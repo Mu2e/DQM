@@ -1,6 +1,8 @@
+#!/usr/bin/env python
+#
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
-
+#--------------------------------------------------
 import dash
 #from dash import dcc
 #from dash import html
@@ -20,9 +22,7 @@ builder = dqmTimelineHtml.timelineHtml()
 
 app.layout = builder.buildPage()
 builder.callbacks(app)
-
-
-#
+#-------------------------------------------------
 # main
 #
 if __name__ == '__main__':

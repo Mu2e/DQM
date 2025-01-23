@@ -1,1 +1,2 @@
-
+# add DQM/bin to path
+PATH bin
