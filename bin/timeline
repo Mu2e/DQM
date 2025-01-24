@@ -23,4 +23,6 @@ while getopts "h" opt; do
             ;;
     esac
 done
-python $DQM_DIR/python/timeline.py
+script_path="$(dirname "$0")"
+python_path=`echo $script_path | sed s/bin/python/`
+python $python_path/timeline.py
