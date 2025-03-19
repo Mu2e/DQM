@@ -179,7 +179,8 @@ def extract_metrics(root_file,df):
 #----------------------------------------------------------------------------
 def output_dqm(root_file,df):
 # root file name supplies "process, stream, aggregation, version"
-
+# create .sh  and .txt file for dqmTool
+#
 # output metrics
     name_fields = os.path.basename(root_file).split(".")
     name_fields[0]="dqm"
@@ -230,14 +231,21 @@ def output_dqm(root_file,df):
     print("--value ",txt_file,sep='',file=f)
 
     f.close()
-    return
+    return sh_file,txt_file
 #------------------------------------------------------------------------
 # executed block starts here
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='Extract CRV metrics from root file for DQM')
     parser.add_argument('RootFile',metavar='<RootFile>',help='Root file containing metatdata tree')
+    parser.add_argument('--insert','-i',action='store_true',help='Insert values into DQM-db')
     args=parser.parse_args()
     DQM_df = create_DQM_df()
     extract_metrics(args.RootFile,DQM_df)
 #    print(DQM_df)
-    output_dqm(args.RootFile,DQM_df)
+    sh_file,txt_file=output_dqm(args.RootFile,DQM_df)
+    if args.insert:
+        result = subprocess.run("source ./"+sh_file, shell=True, capture_output=True, text=True)
+        print(result)
+    else:
+        print(sh_file,txt_file)
+        print("Insert metrics to DQM-db is OFF")
