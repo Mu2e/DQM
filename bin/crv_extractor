@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#
+# bash script to run crv_extractor.py
+#
+#  DJT - Mar 2025
+#
+#---------------------------------
+function usage {
+    echo "Usage: $0 [-h] [-i] <RootFile>"
+    echo "-h: Display this help message"
+    echo "-i: Insert vaules into DQM-db"
+}
+script_path="$(dirname "$0")"
+python_path=`echo $script_path | sed s/bin/python/`
+#
+while getopts "h:i:" opt; do
+    case $opt in
+        h)
+            usage
+            exit 0
+            ;;
+        i)
+            python $python_path/crv_extractor.py -i $1
+            exit 0
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG" >&2
+            usage
+            exit 1
+            ;;
+    esac
+done
+python $python_path/crv_extractor.py $1
