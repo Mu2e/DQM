@@ -1,18 +1,18 @@
 #include "DQM/fcl/dqm.fcl"
 
 
-physics.analyzers.dqmCal.digiTag : SelectRecoMC
+physics.analyzers.dqmCal.digiTag : SelectReco
 physics.analyzers.dqmCal.clusterTag : CaloClusterMaker
 
-physics.analyzers.dqmStr.digiTag : SelectRecoMC
-physics.analyzers.dqmStr.adcTag  : SelectRecoMC
+physics.analyzers.dqmStr.digiTag : SelectReco
+physics.analyzers.dqmStr.adcTag  : SelectReco
 physics.analyzers.dqmStr.flagTag : ""
 
 physics.analyzers.dqmTrkKDe.seedTag : KKDe
 
-physics.analyzers.dqmCrv.digiTag : SelectRecoMC
-physics.analyzers.dqmCrv.recoTag : SelectRecoMC
-physics.analyzers.dqmCrv.clusTag : "SelectRecoMC:CrvCoincidenceClusterFinder"
+physics.analyzers.dqmCrv.digiTag : SelectReco
+physics.analyzers.dqmCrv.recoTag : SelectReco
+physics.analyzers.dqmCrv.clusTag : "SelectReco:CrvCoincidenceClusterFinder"
 
 services.TFileService.fileName : "nts.mu2e.DQM_reco.valNightly_day_000.000000_000000.root"
 
