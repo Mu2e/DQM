@@ -257,8 +257,8 @@ void DqmTrk::analyze(const art::Event& event) {
       float radlensum(0.0);
       for (auto const& ts : ks.straws()) {
         if (ts.active()) {
-          _hSRadLen->Fill(ts.radLen());
-          radlensum += ts.radLen();
+          _hSRadLen->Fill(ts._radlen);
+          radlensum += ts._radlen;
         }
       }
       _hSRadLenSum->Fill(radlensum);
