@@ -6,6 +6,7 @@
 //
 
 #include "DQM/inc/DqmValue.hh"
+#include "DQM/inc/DqmNumber.hh"
 #include "TFile.h"
 #include "TH1D.h"
 #include <iostream>
@@ -35,12 +36,12 @@ class DqmMetrics {
              float value, float sigma, int code, int precision = 2);
 
   TFile& _tfile;
-  DqmValueCollection _vcoll;
+  DqmNumberCollection _ncoll;
 
-  static constexpr int cOK = mu2e::DqmValue::codeValues::OK;
-  static constexpr int cmiss = mu2e::DqmValue::codeValues::missing;
-  static constexpr int cstat = mu2e::DqmValue::codeValues::lowStats;
-  static constexpr int cerror = mu2e::DqmValue::codeValues::error;
+  static constexpr int cOK = mu2e::DqmNumber::codeValues::OK;
+  static constexpr int cmiss = mu2e::DqmNumber::codeValues::missing;
+  static constexpr int cstat = mu2e::DqmNumber::codeValues::lowStats;
+  static constexpr int cerror = mu2e::DqmNumber::codeValues::error;
 };
 
 }  // namespace mu2e
