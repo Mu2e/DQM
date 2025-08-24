@@ -7,11 +7,15 @@
 // dqmTool which is the primary expected use pattern.
 //
 
+#include "DQM/inc/DqmInterval.hh"
+#include "DQM/inc/DqmLimit.hh"
+#include "DQM/inc/DqmNumber.hh"
 #include "DQM/inc/DqmSource.hh"
 #include "DQM/inc/DqmValue.hh"
 #include "Offline/DbService/inc/DbReader.hh"
 #include "Offline/DbService/inc/DbSql.hh"
 #include "Offline/DbTables/inc/DbIoV.hh"
+#include "Offline/GeneralUtilities/inc/StringVec.hh"
 #include <map>
 #include <string>
 #include <vector>
@@ -20,48 +24,43 @@ namespace mu2e {
 
 class DqmTool {
  public:
-  typedef std::vector<std::string> StringVec;
+  DqmTool() : _verbose(0) {}
 
-  DqmTool();
+  // initialize the database connections before any other calls
+  int init();
+  int printSources(bool heading = false);
+  int printIntervals(bool heading = false);
+  int printValues(bool heading = false);
+  int printNumbers(const std::string& name = "numbers", bool heading = false,
+                   const std::string& source = "",
+                   const std::string& value = "", const bool& expand = false);
+  int commitValue(const std::string& source = "", const std::string& runs = "",
+                  const std::string& start = "", const std::string& end = "",
+                  const std::string& value = "");
+  int commitLimit(const std::string& source = "", const std::string& runs = "",
+                  const std::string& start = "", const std::string& end = "",
+                  const std::string& limit = "");
+  void setVerbose(int verbose) { _verbose = verbose; }
 
-  // run a database command (see actions)
-  int run(const std::string& arg);
-  int run(const StringVec& args);
-  // the result of the command, in a string with embedded '\n'
-  std::string getResult() { return _result; }
+  // retrieve text output from a print command call
+  const std::string& getResult() const { return _result; }
 
  private:
-  typedef std::map<std::string, std::string> ArgMap;
-
-  void usage(bool inAction = false);
-  int init();
-
-  int commitValue();
-
-  int printSources();
-  int printIntervals();
-  int printValues();
-  int printNumbers();
-
+  // read a full table in a string
+  int readTable(const std::string& table, std::string& result);
   // give the process, stream etc in a source, lookup sid in db
   int lookupSid(DqmSource& source);
-  // give the grou, subgroup etc in a value, lookup vid in db
+  // give the parameters in an interval, lookup iid in db
+  int lookupIid(DqmInterval& interval);
+  // give the group, subgroup etc in a value, lookup vid in db
   int lookupVid(DqmValue& value);
-  // given a string, a file name or csv, parse it into a DqmSource
-  int parseSource(DqmSource& source, std::string& runs, const std::string& ss);
-  // given a string, csv, parse it into a DqmValue
-  int parseValue(DqmValue& value, const std::string& vv);
-  // tokenize a string, if del=='X' try several
-  StringVec splitString(const std::string& command, char del = 'X');
-  // parse the general arguments, like "verbose"
-  int parseGeneral();
-  // parse the action argument (like "print-values")
-  int parseAction();
+  // lookup or create in database based on object parameters
+  int locateSource(DqmSource& source);
+  int locateInterval(DqmInterval& interval);
+  int locateValue(DqmValue& value);
+  int insertNumber(DqmNumber& number);
+  int insertLimit(DqmLimit& limit);
 
-  StringVec _args;        // all the args
-  std::string _action;    // action, parsed from arg
-  StringVec _actionArgs;  // args to the action
-  ArgMap _argMap;         // map of ["option"] = value
   int _verbose;
   int _dryrun;
   std::string _result;
