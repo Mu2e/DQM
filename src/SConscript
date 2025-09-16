@@ -13,6 +13,7 @@ babarlibs = env['BABARLIBS']
 
 mainlib = helper.make_mainlib ( [ 'mu2e_DbService',
                                   'mu2e_DbTables',
+                                  'mu2e_GeneralUtilities',
                                   'cetlib',
                                   'cetlib_except',
                                   'pq',
@@ -28,6 +29,7 @@ helper.make_plugins( [ mainlib,
                        babarlibs,
                        'KinKal_Trajectory',
                        'KinKal_General',
+                       'mu2e_GeneralUtilities',
                        'art_Framework_Core',
                        'art_Framework_Principal',
                        'art_Persistency_Common',
@@ -48,11 +50,13 @@ helper.make_plugins( [ mainlib,
                      ] )
 
 
-helper.make_bin("dqmTool",[ mainlib, 
-                            'dqm', 
-                            'mu2e_DbService', 
-                            'mu2e_DbTables', 
-                            'cetlib', 
+helper.make_bin("dqmTool",[ mainlib,
+                            'dqm',
+                            'mu2e_DbService',
+                            'mu2e_DbTables',
+                            'mu2e_GeneralUtilities',
+                            'boost_program_options',
+                            'cetlib',
                             'cetlib_except',
                             'pq' ])
 
