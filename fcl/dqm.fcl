@@ -13,14 +13,14 @@ physics :
   analyzers : {
     dqmCal : {
       module_type : DqmCal
-      digiTag : SelectRecoMC
+      digiTag : SelectReco
       clusterTag : CaloClusterMaker
     }
     dqmStr : {
       module_type : DqmStr
-      digiTag : SelectRecoMC
-      adcTag  : SelectRecoMC
-      flagTag : SelectRecoMC
+      digiTag : SelectReco
+      adcTag  : SelectReco
+      flagTag : ""
     }
     dqmTrkKKDe : {
       module_type : DqmTrk
@@ -28,9 +28,9 @@ physics :
     }
     dqmCrv : {
       module_type : DqmCrv
-      digiTag : SelectRecoMC
-      recoTag : SelectRecoMC
-      clusTag : SelectRecoMC
+      digiTag : SelectReco
+      recoTag : SelectReco
+      clusTag : "SelectReco:CrvCoincidenceClusterFinder"
     }
   }
 
