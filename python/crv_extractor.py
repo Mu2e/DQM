@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 #
 # DQM CRV extractor
 # read CRV root files and create dqm database-entry text files
@@ -56,6 +57,28 @@ def samweb_dict(root_filename):
         key, value = stdout_array[i].split(":",1)
         file_dict[key.strip()] = value.strip()
     return file_dict
+
+#
+# create python dictionary from metacat metadata
+#  keys are : ['checksums', 'adler32', 'enstore', 'created_timestamp', 'creator', 'fid', 'name', 'namespace',
+#              'size', 'updated_timestamp', 'metadata', 'dh.dataset', 'dh.status', 'dh.type', 'fn.configuration',
+#              'fn.description', 'fn.format', 'fn.owner', 'fn.sequencer', 'fn.tier', 'parents', 'mu2e']
+#
+def metacat_dict(root_filename):
+    filename="mu2e:"+os.path.basename(root_filename)
+    result = subprocess.run(["metacat", "file","show","-m","-l",filename], capture_output=True, text=True)
+    stdout_array=result.stdout.split("\n")
+    file_dict={}
+    for i in range(len(stdout_array)-1):
+        key, value = stdout_array[i].split(":",1)
+        if (key.strip() == "parents"):
+            key2, value2 = stdout_array[i+1].split(":",1)
+            file_dict[key.strip()] = value2.split("(",1)[0].strip()
+        else:
+            file_dict[key.strip()] = value.strip()
+    return file_dict
+#
+
 #----------------------------------------------------------------------------
 def create_DQM_df():
 # multiplier is number of metrics from "hist"
@@ -206,14 +229,14 @@ def output_dqm(root_file,df):
 
 # get source information for dqm-db
     process,version,aggregation=parse_dqm_file(root_file)
-    meta_data=samweb_dict(root_file)
-    stream=parse_parent_file(meta_data['Parents'])
+    meta_data=metacat_dict(root_file)
+    stream=parse_parent_file(meta_data['parents'])
 
 # check times (fix time=0 for runs <=1043 with file parent 'Create Date')
     if (firstSpillTime == 0):
-        parent_meta_data=samweb_dict(meta_data['Parents'])
-        start_time=parent_meta_data['Create Date']
-        end_time=parent_meta_data['Create Date']
+        parent_meta_data=metacat_dict(meta_data['parents'])
+        start_time=parent_meta_data['created_timestamp']
+        end_time=parent_meta_data['created_timestamp']
     else:
         start_time=datetime.fromtimestamp(firstSpillTime).isoformat()
         end_time=datetime.fromtimestamp(lastSpillTime).isoformat()
