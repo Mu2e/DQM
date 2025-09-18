@@ -121,7 +121,7 @@ class timelineData:
         lines = []
         nread = 0
         furl = self.url+url
-        #print(furl)
+        print(furl)
         file = urllib.request.urlopen(furl)
         for line in file:
             nread = nread + 1

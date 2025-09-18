@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
                           pcli.getString("commit-value", "value"));
     if (rc != 0) return rc;
   } else if (pcli.subcommand() == "commit-limit") {
-    rc = tool.commitValue(pcli.getString("commit-limit", "source"),
+    rc = tool.commitLimit(pcli.getString("commit-limit", "source"),
                           pcli.getString("commit-limit", "runs"),
                           pcli.getString("commit-limit", "start"),
                           pcli.getString("commit-limit", "end"),
