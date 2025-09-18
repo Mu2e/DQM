@@ -63,7 +63,7 @@ helper.make_bin("dqmTool",[ mainlib,
 helper.make_bin("dqmMetrics",[ mainlib, rootlibs ] )
 
 ## turn pywrap.i into a python interface
-#helper.make_pywrap (['dqm'])
+helper.make_pywrap (['dqm','mu2e_DbService','mu2e_DbTables'])
 
 # This tells emacs to view this file in python mode.
 # Local Variables:
