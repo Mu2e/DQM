@@ -462,13 +462,20 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
     }
     int ind;
     ind = std::stoi(rss[1]);
-    oss << "  " << smap[ind];
+    oss << ", " << smap[ind];
     ind = std::stoi(rss[3]);
-    oss << "  " << vmap[ind];
+    oss << ", " << vmap[ind];
     ind = std::stoi(rss[2]);
-    oss << "  " << imap[ind] << "\n";
+    oss << ", " << imap[ind] << "\n";
     _result.append(oss.str());
   }
+    if (heading) {
+      if(name=="numbers") {
+        _result = "nid, value, sigma, code, sid, proc, stream, agg, ver, vid, group, hist, metric, iid, sid, start_run, start_sub, stop_run, stop_sub, start_time, stop_time\n"+_result;
+      } else {
+        _result = "nid, lower_lim, upper_lim, sigma, alarmcode, sid, proc, stream, agg, ver, vid, group, hist, metric, iid, sid, start_run, start_sub, stop_run, stop_sub, start_time, stop_time\n"+_result;
+      }
+    }
 
   return 0;
 }
