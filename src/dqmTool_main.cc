@@ -121,10 +121,10 @@ int main(int argc, char** argv) {
                            pcli.getBool("print-numbers", "expand"));
     if (rc != 0) return rc;
   } else if (pcli.subcommand() == "print-limits") {
-    rc = tool.printNumbers("limits", pcli.getBool("print-numbers", "heading"),
-                           pcli.getString("print-numbers", "source"),
-                           pcli.getString("print-numbers", "value"),
-                           pcli.getBool("print-numbers", "expand"));
+    rc = tool.printNumbers("limits", pcli.getBool("print-limits", "heading"),
+                           pcli.getString("print-limits", "source"),
+                           pcli.getString("print-limits", "value"),
+                           pcli.getBool("print-limits", "expand"));
     if (rc != 0) return rc;
   } else if (pcli.subcommand() == "commit-value") {
     rc = tool.commitValue(pcli.getString("commit-value", "source"),
