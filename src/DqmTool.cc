@@ -400,9 +400,9 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
   if (!expand) {
     if (heading) {
       if(name=="numbers") {
-        _result = "nid, sid, iid, vid, value, sigma, code\n" + result;
+        _result = "nid,sid,iid,vid,value,sigma,code\n" + result;
       } else {
-        _result = "nid, sid, iid, vid, llimit, ulimit, sigma, alarmcode\n" + result;
+        _result = "nid,sid,iid,vid,llimit,ulimit,sigma,alarmcode\n" + result;
       }
     } else {
       _result = result;
@@ -444,6 +444,14 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
   }
 
   _result.clear();
+  if (heading) {
+    if(name=="numbers") {
+      _result = "nid,value,sigma,code,sid,proc,stream,agg,ver,vid,group,hist,metric,iid,sid,start_run,start_sub,stop_run,stop_sub,start_time,stop_time\n";
+    } else {
+      _result = "nid,lower_lim,upper_lim,sigma,alarmcode,sid,proc,stream,agg,ver,vid,group,hist,metric,iid,sid,start_run,start_sub,stop_run,stop_sub,start_time,stop_time\n";
+    }
+  }
+
   auto rsv = splitString(result, "\n");
   rsv.pop_back();  // last entry is blank
   std::ostringstream oss;
@@ -469,13 +477,6 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
     oss << ", " << imap[ind] << "\n";
     _result.append(oss.str());
   }
-    if (heading) {
-      if(name=="numbers") {
-        _result = "nid, value, sigma, code, sid, proc, stream, agg, ver, vid, group, hist, metric, iid, sid, start_run, start_sub, stop_run, stop_sub, start_time, stop_time\n"+_result;
-      } else {
-        _result = "nid, lower_lim, upper_lim, sigma, alarmcode, sid, proc, stream, agg, ver, vid, group, hist, metric, iid, sid, start_run, start_sub, stop_run, stop_sub, start_time, stop_time\n"+_result;
-      }
-    }
 
   return 0;
 }
