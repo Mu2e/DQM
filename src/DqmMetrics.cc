@@ -3,6 +3,7 @@
 #include "TH1D.h"
 #include <iomanip>
 #include <sstream>
+#include <cmath>
 
 //***********************************************************
 
