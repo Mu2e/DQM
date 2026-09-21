@@ -45,6 +45,41 @@ cet_build_plugin(DqmCrv art::module
       ROOT::Postscript
 )
 
+cet_build_plugin(DqmCrvDigi art::module
+    REG_SOURCE DqmCrvDigi_module.cc
+    LIBRARIES REG
+      Offline::CRVDQM
+      Offline::DQMHelpers
+      Offline::CRVConditions
+      Offline::CosmicRayShieldGeom
+      Offline::GeometryService
+      Offline::ProditionsService
+      Offline::RecoDataProducts
+      art_root_io::TFileService_service
+)
+
+cet_build_plugin(DqmCrvStatus art::module
+    REG_SOURCE DqmCrvStatus_module.cc
+    LIBRARIES REG
+      Offline::CRVDQM
+      Offline::DQMHelpers
+      Offline::RecoDataProducts
+      art_root_io::TFileService_service
+)
+
+cet_build_plugin(DqmCrvReco art::module
+    REG_SOURCE DqmCrvReco_module.cc
+    LIBRARIES REG
+      Offline::CRVDQM
+      Offline::DQMHelpers
+      Offline::CRVConditions
+      Offline::CosmicRayShieldGeom
+      Offline::GeometryService
+      Offline::ProditionsService
+      Offline::RecoDataProducts
+      art_root_io::TFileService_service
+)
+
 cet_build_plugin(DqmStm art::module
     REG_SOURCE DqmStm_module.cc
     LIBRARIES REG
