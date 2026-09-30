@@ -1,0 +1,56 @@
+#
+# CRV DQM on Run 1A/1B reco (stock run1a_v01 geometry): the DqmCrvDigi,
+# DqmCrvStatus and DqmCrvReco modules, each filling one Offline/CRVDQM
+# client. Binning is fixed in the clients, so every file this writes has the
+# same histogram set and merges with hadd.
+#
+#   mu2e -c DQM/fcl/crvDQM.fcl -s <mcs or rec file> -T crvDQM.root
+#
+# Defaults suit MDC2025 mcs files (products under SelectReco, no CrvStatus).
+# On data with CrvStatus, set crvDigiDQM.statusTag and add crvStatusDQM to the
+# path, as in crvDQM_kpp.fcl. Extra copies per subrun:
+#   physics.analyzers.crvDigiDQM.dqm.hists : @local::DQMHelpers.Hists.PerSubrun
+#
+
+#include "Offline/fcl/minimalMessageService.fcl"
+#include "Offline/fcl/standardServices.fcl"
+#include "Offline/CRVDQM/fcl/prolog.fcl"
+
+process_name : CrvDQM
+
+source : { module_type : RootInput }
+
+services : @local::Services.Reco
+
+physics : {
+  analyzers : {
+    crvDigiDQM : {
+      module_type : DqmCrvDigi
+      digiTag     : "SelectReco"
+      statusTag   : ""
+      dqm         : @local::CRVDQM.Digi
+    }
+    crvStatusDQM : {
+      module_type : DqmCrvStatus
+      statusTag   : "CrvDigi"
+      daqErrorTag : "CrvDigi"
+      dqm         : @local::CRVDQM.Status
+    }
+    crvRecoDQM : {
+      module_type : DqmCrvReco
+      clusterTag  : "SelectReco:CrvCoincidenceClusterFinder"
+      pulseTag    : "SelectReco"
+      dqm         : @local::CRVDQM.Reco
+    }
+  }
+  crvDQM    : [ crvDigiDQM, crvRecoDQM ]
+  end_paths : [ crvDQM ]
+}
+
+services.TFileService.fileName : "crvDQM.root"
+
+# CRV status and calibration conditions (notConnected channels are left out of
+# the per-sector histograms). MDC2025 production conditions:
+services.DbService.purpose : Sim_best
+services.DbService.version : v1_5
+services.DbService.verbose : 0
