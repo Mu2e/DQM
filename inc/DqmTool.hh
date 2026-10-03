@@ -7,6 +7,7 @@
 // dqmTool which is the primary expected use pattern.
 //
 
+#include "DQM/inc/DqmFile.hh"
 #include "DQM/inc/DqmInterval.hh"
 #include "DQM/inc/DqmLimit.hh"
 #include "DQM/inc/DqmNumber.hh"
@@ -31,12 +32,13 @@ class DqmTool {
   int printSources(bool heading = false);
   int printIntervals(bool heading = false);
   int printValues(bool heading = false);
+  int printFiles(bool heading = false);
   int printNumbers(const std::string& name = "numbers", bool heading = false,
                    const std::string& source = "",
                    const std::string& value = "", const bool& expand = false);
   int commitValue(const std::string& source = "", const std::string& runs = "",
                   const std::string& start = "", const std::string& end = "",
-                  const std::string& value = "");
+                  const std::string& value = "", const std::string& file = "");
   int commitLimit(const std::string& source = "", const std::string& runs = "",
                   const std::string& start = "", const std::string& end = "",
                   const std::string& limit = "");
@@ -58,6 +60,7 @@ class DqmTool {
   int locateSource(DqmSource& source);
   int locateInterval(DqmInterval& interval);
   int locateValue(DqmValue& value);
+  int locateFile(DqmFile& file);
   int insertNumber(DqmNumber& number);
   int insertLimit(DqmLimit& limit);
 

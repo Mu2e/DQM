@@ -10,6 +10,19 @@
 #include <map>
 #include <string>
 
+namespace {
+// wrap a string in single quotes for use as an SQL literal, doubling
+// any single quote it contains, as postgres expects
+std::string sqlQuote(const std::string& str) {
+  std::string out("'");
+  for (char cc : str) {
+    if (cc == '\'') out += '\'';
+    out += cc;
+  }
+  out += "'";
+  return out;
+}
+}  // namespace
 
 //***********************************************************
 
@@ -33,7 +46,8 @@ int mu2e::DqmTool::init() {
 int mu2e::DqmTool::commitValue(const std::string& sources,
                                const std::string& runss,
                                const std::string& start, const std::string& end,
-                               const std::string& valuestr) {
+                               const std::string& valuestr,
+                               const std::string& filestr) {
   int rc;
 
   // **** interpret source (process/stream/aggregation/version)
@@ -93,6 +107,7 @@ int mu2e::DqmTool::commitValue(const std::string& sources,
     std::cout << "start  :" << st << std::endl;
     std::cout << "end    :" << en << std::endl;
     std::cout << "value : " << vv << std::endl;
+    std::cout << "file  : " << filestr << std::endl;
   }
 
   // collect the list of values from a file, if needed
@@ -136,6 +151,14 @@ int mu2e::DqmTool::commitValue(const std::string& sources,
   interval.setSid(source.sid());
   rc = locateInterval(interval);
   if (rc) return rc;
+
+  // now that we have the sid and iid, record which file, if any,
+  // these metrics were derived from
+  if (!filestr.empty()) {
+    DqmFile file(filestr, source.sid(), interval.iid());
+    rc = locateFile(file);
+    if (rc) return rc;
+  }
 
   for (auto const& vvs : values) {
     // take a string like "cal,disk0,menaE,20.0,0.1,0"
@@ -324,6 +347,16 @@ int mu2e::DqmTool::printValues(bool heading) {
   int rc = readTable("dqm.values", _result);
   if (heading) {
     _result = "vid, group, subgroup, name\n" + _result;
+  }
+  return rc;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::printFiles(bool heading) {
+  int rc = readTable("dqm.files", _result);
+  if (heading) {
+    _result = "fid, sid, iid, filename\n" + _result;
   }
   return rc;
 }
@@ -661,6 +694,46 @@ int mu2e::DqmTool::locateValue(DqmValue& value) {
     std::cout << "vid is " << vid << std::endl;
   }
   value.setVid(vid);
+  return 0;
+}
+
+//***********************************************************
+
+// A sid,iid pair may have several files, so this does not replace any
+// row already there.  Committing the same file again is not an error,
+// it simply finds the existing row instead of inserting a duplicate.
+
+int mu2e::DqmTool::locateFile(DqmFile& file) {
+  std::string command, result;
+
+  if (file.sid() < 0 || file.iid() < 0) {
+    std::cout << "Error - can't locate file with no sid or iid\n";
+    return 1;
+  }
+
+  std::string name = sqlQuote(file.name());
+
+  command = "select fid from dqm.files where sid=" +
+            std::to_string(file.sid()) +
+            " and iid=" + std::to_string(file.iid()) + " and filename=" + name +
+            ";";
+  int rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  if (result.empty()) {
+    command = "INSERT INTO dqm.files (sid,iid,filename)  VALUES (" +
+              std::to_string(file.sid()) + "," + std::to_string(file.iid()) +
+              "," + name + ") RETURNING fid;";
+    rc = _sql.execute(command, result);
+    if (rc) return rc;
+  }
+
+  int fid = std::stoi(result);
+
+  if (_verbose > 0) {
+    std::cout << "fid is " << fid << std::endl;
+  }
+  file.setFid(fid);
   return 0;
 }
 
