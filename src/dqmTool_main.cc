@@ -32,8 +32,7 @@ int main(int argc, char** argv) {
                  "also print a header", "");
   pcli.addSwitch(
       "print-numbers", "source", "s", "source", true,
-      "source for value either\n       name of the DQM histogram "
-      "source file\n       or csv like "
+      "source for value either\n       csv like "
       "\"pass1,ele,file,0\" = process,stream,aggregation,version\n    "
       "   or an SID");
   pcli.addSwitch(
@@ -48,8 +47,7 @@ int main(int argc, char** argv) {
                  "also print a header", "");
   pcli.addSwitch(
       "print-limits", "source", "s", "source", true,
-      "source for metric either\n       name of the DQM histogram "
-      "source file\n       or csv like "
+      "source for metric either\n       csv like "
       "\"pass1,ele,file,0\" = process,stream,aggregation,version\n    "
       "   or an SID");
   pcli.addSwitch(
@@ -61,8 +59,7 @@ int main(int argc, char** argv) {
 
   pcli.addSubcommand("commit-value", "commit metric value");
   pcli.addSwitch("commit-value", "source", "s", "source", true,
-                 "source for metric either\n       name of the DQM histogram "
-                 "source file\n       or csv like \"pass1,ele,file,0\" = "
+                 "source for metric, csv like \"pass1,ele,file,0\" = "
                  "process,stream,aggregation,version");
   pcli.addSwitch(
       "commit-value", "runs", "r", "runs", true,
@@ -81,8 +78,7 @@ int main(int argc, char** argv) {
 
   pcli.addSubcommand("commit-limit", "commit metric limit");
   pcli.addSwitch("commit-limit", "source", "s", "source", true,
-                 "source for metric either\n       name of the DQM histogram "
-                 "source file\n       or csv like \"pass1,ele,file,0\" = "
+                 "source for metric, csv like \"pass1,ele,file,0\" = "
                  "process,stream,aggregation,version");
   pcli.addSwitch(
       "commit-limit", "runs", "r", "runs", true,
