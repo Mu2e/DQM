@@ -42,6 +42,23 @@ GRANT INSERT ON dqm.intervals TO dqmwrite;
 GRANT UPDATE ON dqm.intervals_iid_seq TO dqmwrite;
 
 
+-- rows are files that the metrics of a source and interval were derived
+-- from.  A sid,iid pair may have more than one file.
+CREATE TABLE dqm.files (
+  fid SERIAL,
+  sid INTEGER NOT NULL,
+  iid INTEGER NOT NULL,
+  filename TEXT NOT NULL,
+  CONSTRAINT files_pk PRIMARY KEY (fid),
+  CONSTRAINT files_sid_fk FOREIGN KEY (sid) REFERENCES dqm.sources(sid),
+  CONSTRAINT files_iid_fk FOREIGN KEY (iid) REFERENCES dqm.intervals(iid),
+  CONSTRAINT files_unique UNIQUE (sid,iid,filename)
+  );
+GRANT SELECT ON dqm.files TO PUBLIC;
+GRANT INSERT ON dqm.files TO dqmwrite;
+GRANT UPDATE ON dqm.files_fid_seq TO dqmwrite;
+
+
 -- rows are labels for DQM values
 CREATE TABLE dqm.values
   (vid SERIAL,

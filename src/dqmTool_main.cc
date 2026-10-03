@@ -26,6 +26,10 @@ int main(int argc, char** argv) {
   pcli.addSubcommand("print-values", "list all the names of the metrics");
   pcli.addSwitch("print-values", "heading", "d", "heading", false,
                  "also print a header", "");
+  pcli.addSubcommand("print-files",
+                     "list the files the metrics were derived from");
+  pcli.addSwitch("print-files", "heading", "d", "heading", false,
+                 "also print a header", "");
 
   pcli.addSubcommand("print-numbers", "print all metrics numbers");
   pcli.addSwitch("print-numbers", "heading", "d", "heading", false,
@@ -75,6 +79,10 @@ int main(int argc, char** argv) {
                  "\"cal,disk0,meanE,20.0,0.1,0\"  = "
                  "group,subgroup,name,val,sigma,code\n       or a filespec of "
                  "a text file containing csv strings");
+  pcli.addSwitch("commit-value", "file", "f", "file", true,
+                 "name of the file these metrics were derived from,\n"
+                 "       recorded against this source and interval so an\n"
+                 "       anomalous metric can be traced back to it (optional)");
 
   pcli.addSubcommand("commit-limit", "commit metric limit");
   pcli.addSwitch("commit-limit", "source", "s", "source", true,
@@ -110,6 +118,9 @@ int main(int argc, char** argv) {
   } else if (pcli.subcommand() == "print-values") {
     rc = tool.printValues(pcli.getBool("print-values", "heading"));
     if (rc != 0) return rc;
+  } else if (pcli.subcommand() == "print-files") {
+    rc = tool.printFiles(pcli.getBool("print-files", "heading"));
+    if (rc != 0) return rc;
   } else if (pcli.subcommand() == "print-numbers") {
     rc = tool.printNumbers("numbers", pcli.getBool("print-numbers", "heading"),
                            pcli.getString("print-numbers", "source"),
@@ -127,7 +138,8 @@ int main(int argc, char** argv) {
                           pcli.getString("commit-value", "runs"),
                           pcli.getString("commit-value", "start"),
                           pcli.getString("commit-value", "end"),
-                          pcli.getString("commit-value", "value"));
+                          pcli.getString("commit-value", "value"),
+                          pcli.getString("commit-value", "file"));
     if (rc != 0) return rc;
   } else if (pcli.subcommand() == "commit-limit") {
     rc = tool.commitLimit(pcli.getString("commit-limit", "source"),
