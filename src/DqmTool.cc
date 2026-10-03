@@ -44,11 +44,8 @@ int mu2e::DqmTool::commitValue(const std::string& sources,
     return 1;
   }
 
-  // take the ss string and parse it into proces/stream, etc, fields,
-  // whether it is a file name with a standard form, or csv string
-  // runs will be filled if the aources was a file with a runs type sequencer
+  // take the ss string and parse it into proces/stream, etc, fields
   DqmSource source(ss);
-  std::string runs = source.run();
 
   // **** interpret time interval
 
@@ -56,19 +53,14 @@ int mu2e::DqmTool::commitValue(const std::string& sources,
   std::string st = start;
   std::string en = end;
 
-  // if we got a start run from the file name, and the
-  // explicit run range parameter does not overwrite it, then use it
-  if (rn.empty() && !runs.empty()) rn = runs;
-
   // must have some time or run restriction
   if (rn.empty() && st.empty()) {
-    std::cout << "ERROR - commit-source requires one of --runs, --start, or a "
-                 "file name with a run_subrun sequencer"
+    std::cout << "ERROR - commit-value requires one of --runs or --start"
               << std::endl;
     return 1;
   }
   if (st.empty() && !en.empty()) {
-    std::cout << "ERROR - commit-source --end is non-empty but --start is "
+    std::cout << "ERROR - commit-value --end is non-empty but --start is "
                  "empty (opposite is allowed)"
               << std::endl;
     return 1;
@@ -95,7 +87,7 @@ int mu2e::DqmTool::commitValue(const std::string& sources,
   }
 
   if (_verbose > 2) {
-    std::cout << "Running commit-source with parameters:" << std::endl;
+    std::cout << "Running commit-value with parameters:" << std::endl;
     std::cout << "source :" << ss << std::endl;
     std::cout << "runs   :" << rn << std::endl;
     std::cout << "start  :" << st << std::endl;
@@ -186,11 +178,8 @@ int mu2e::DqmTool::commitLimit(const std::string& sources,
     return 1;
   }
 
-  // take the ss string and parse it into proces/stream, etc, fields,
-  // whether it is a file name with a standard form, or csv string
-  // runs will be filled if the sources was a file with a runs type sequencer
+  // take the ss string and parse it into proces/stream, etc, fields
   DqmSource source(ss);
-  std::string runs = source.run();
 
   // **** interpret time interval
 
@@ -198,14 +187,9 @@ int mu2e::DqmTool::commitLimit(const std::string& sources,
   std::string st = start;
   std::string en = end;
 
-  // if we got a start run from the file name, and the
-  // explicit run range parameter does not overwrite it, then use it
-  if (rn.empty() && !runs.empty()) rn = runs;
-
   // must have some time or run restriction
   if (rn.empty() && st.empty()) {
-    std::cout << "ERROR - commit-limit requires one of --runs, --start, or a "
-                 "file name with a run_subrun sequencer"
+    std::cout << "ERROR - commit-limit requires one of --runs or --start"
               << std::endl;
     return 1;
   }
@@ -237,7 +221,7 @@ int mu2e::DqmTool::commitLimit(const std::string& sources,
   }
 
   if (_verbose > 2) {
-    std::cout << "Running commit-source with parameters:" << std::endl;
+    std::cout << "Running commit-limit with parameters:" << std::endl;
     std::cout << "source :" << ss << std::endl;
     std::cout << "runs   :" << rn << std::endl;
     std::cout << "start  :" << st << std::endl;
@@ -355,7 +339,7 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
     std::string ss = sources;
     if (ss.find_first_not_of("0123456789") == std::string::npos) {
       sid = std::stoi(ss);  // was an integer
-    } else {                // is file name or csv
+    } else {                // is csv
       DqmSource source(ss);
       lookupSid(source);
       sid = source.sid();
