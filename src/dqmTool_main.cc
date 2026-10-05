@@ -31,6 +31,28 @@ int main(int argc, char** argv) {
   pcli.addSwitch("print-files", "heading", "d", "heading", false,
                  "also print a header", "");
 
+  pcli.addSubcommand("print-alarms", "list alarm episodes");
+  pcli.addSwitch("print-alarms", "heading", "d", "heading", false,
+                 "also print a header", "");
+  pcli.addSwitch("print-alarms", "note", "n", "note", false,
+                 "also print the note column.  It holds algo-internal\n"
+                 "       json, whose commas and newlines make the csv\n"
+                 "       awkward to parse, so it is off by default",
+                 "");
+  pcli.addSwitch("print-alarms", "live", "l", "live", false,
+                 "only alarms still worth looking at, i.e. those not\n"
+                 "       retired or deleted",
+                 "");
+
+  pcli.addSubcommand("print-causes",
+                     "list the evidence for the alarm episodes");
+  pcli.addSwitch("print-causes", "heading", "d", "heading", false,
+                 "also print a header", "");
+  pcli.addSwitch("print-causes", "numbers", "n", "numbers", false,
+                 "also print the measurement each cause refers to", "");
+  pcli.addSwitch("print-causes", "aid", "i", "aid", true,
+                 "only causes of this one alarm episode");
+
   pcli.addSubcommand("print-numbers", "print all metrics numbers");
   pcli.addSwitch("print-numbers", "heading", "d", "heading", false,
                  "also print a header", "");
@@ -102,6 +124,32 @@ int main(int argc, char** argv) {
       "name of the metric, either\n       csv like \"cal,disk0,meanE\" = "
       "group,subgroup,name\n       or VID");
 
+  pcli.addSubcommand("commit-alarm", "commit an alarm finding");
+  pcli.addSwitch("commit-alarm", "algo", "a", "algo", true,
+                 "name of the algorithm, e.g. \"limits\"");
+  pcli.addSwitch("commit-alarm", "config", "c", "config", true,
+                 "label for the algorithm's configuration,\n"
+                 "       e.g. \"crv-tight-0\"");
+  pcli.addSwitch("commit-alarm", "subject", "j", "subject", true,
+                 "what the algorithm found, from its own short\n"
+                 "       vocabulary, e.g. \"gain_shifted\"");
+  pcli.addSwitch("commit-alarm", "sid", "s", "sid", true,
+                 "the source examined");
+  pcli.addSwitch("commit-alarm", "cause", "u", "cause", true,
+                 "evidence for the finding, either a csv string like\n"
+                 "       \"200,11,2\" = iid,vid,level\n"
+                 "       or \"200,2\" = iid,level for a global test\n"
+                 "       or a filespec of a text file of csv strings");
+  pcli.addSwitch("commit-alarm", "note", "n", "note", true,
+                 "algo-internal json, not queryable (optional)");
+
+  pcli.addSubcommand("alarm-status", "set an alarm episode's status");
+  pcli.addSwitch("alarm-status", "aid", "i", "aid", true,
+                 "the alarm episode to update");
+  pcli.addSwitch("alarm-status", "status", "s", "status", true,
+                 mu2e::DqmAlarm::statusList() +
+                     "\n       retired and deleted also close the episode");
+
   int rc = pcli.setArgs(argc, argv);
   if (rc != 0) return rc;
 
@@ -120,6 +168,16 @@ int main(int argc, char** argv) {
     if (rc != 0) return rc;
   } else if (pcli.subcommand() == "print-files") {
     rc = tool.printFiles(pcli.getBool("print-files", "heading"));
+    if (rc != 0) return rc;
+  } else if (pcli.subcommand() == "print-alarms") {
+    rc = tool.printAlarms(pcli.getBool("print-alarms", "heading"),
+                          pcli.getBool("print-alarms", "note"),
+                          pcli.getBool("print-alarms", "live"));
+    if (rc != 0) return rc;
+  } else if (pcli.subcommand() == "print-causes") {
+    rc = tool.printCauses(pcli.getBool("print-causes", "heading"),
+                          pcli.getBool("print-causes", "numbers"),
+                          pcli.getString("print-causes", "aid"));
     if (rc != 0) return rc;
   } else if (pcli.subcommand() == "print-numbers") {
     rc = tool.printNumbers("numbers", pcli.getBool("print-numbers", "heading"),
@@ -147,6 +205,18 @@ int main(int argc, char** argv) {
                           pcli.getString("commit-limit", "start"),
                           pcli.getString("commit-limit", "end"),
                           pcli.getString("commit-limit", "value"));
+    if (rc != 0) return rc;
+  } else if (pcli.subcommand() == "commit-alarm") {
+    rc = tool.commitAlarm(pcli.getString("commit-alarm", "algo"),
+                          pcli.getString("commit-alarm", "config"),
+                          pcli.getString("commit-alarm", "subject"),
+                          pcli.getString("commit-alarm", "sid"),
+                          pcli.getString("commit-alarm", "cause"),
+                          pcli.getString("commit-alarm", "note"));
+    if (rc != 0) return rc;
+  } else if (pcli.subcommand() == "alarm-status") {
+    rc = tool.alarmStatus(pcli.getString("alarm-status", "aid"),
+                          pcli.getString("alarm-status", "status"));
     if (rc != 0) return rc;
   } else {
     std::cout << "Error - unknown command: " << pcli.subcommand() << std::endl;
