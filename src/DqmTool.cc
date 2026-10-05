@@ -332,9 +332,9 @@ int mu2e::DqmTool::commitLimit(const std::string& sources,
 
 // Take one finding from one evaluator instance and record it.  The
 // evaluator supplies the subject and the causes; algo, config and sid
-// identify the instance it came from.  Identity is the four together,
-// and a finding either extends the episode it matches inside the grace
-// window or opens a new one.  See checker_spec.txt sections 3 and 5.
+// identify the instance.  Identity is the four together, and a finding
+// either extends the episode it matches inside the grace window or
+// opens a new one.
 
 int mu2e::DqmTool::commitAlarm(const std::string& algos,
                                const std::string& configs,
@@ -420,18 +420,16 @@ int mu2e::DqmTool::commitAlarm(const std::string& algos,
 
   // Level and hull span come from the causes' own intervals, so they
   // cannot drift from the evidence.  This also validates the causes,
-  // and is deliberately done before BEGIN below: it is the one step
-  // that can fail on a check of ours rather than on an sql error, and
-  // a failed check has to leave no transaction open behind it.
+  // and runs before BEGIN: it is the one step that fails on a check of
+  // ours rather than an sql error, and must leave no open transaction.
   rc = spanFromCauses(alarm, causes);
   if (rc) return rc;
 
-  // Unlike the other commit paths, this one does need a transaction:
-  // matching an episode and then extending or inserting it is not a
-  // single atomic step, and two evaluators may run at once.  Every
-  // failure past this point is an sql error, and DbSql::execute
-  // disconnects on those, which aborts the transaction - so the early
-  // returns below cannot leave a half-written episode.
+  // Unlike the other commit paths this one needs a transaction, since
+  // matching an episode and then extending or inserting it is not one
+  // atomic step.  Every failure past here is an sql error, and
+  // DbSql::execute disconnects on those, aborting the transaction, so
+  // the early returns cannot leave a half-written episode.
   command = "BEGIN;";
   rc = _sql.execute(command, result);
   if (rc) return rc;
@@ -494,11 +492,11 @@ int mu2e::DqmTool::alarmStatus(const std::string& aids,
   rc = _sql.execute(command, result);
   if (rc) return rc;
 
-  // retired and deleted are terminal, so they close the episode as
-  // well: a later matching finding should start a fresh one rather
-  // than resurrect this one.  active, acknowledged and silenced leave
-  // open alone, since an acknowledged problem that is still going on
-  // should keep extending rather than spawning duplicate episodes.
+  // retired and deleted are terminal, so they close the episode too: a
+  // later matching finding starts a fresh one rather than resurrecting
+  // this one.  active, acknowledged and silenced leave open alone, so
+  // an acknowledged problem that is still going on keeps extending
+  // rather than spawning duplicate episodes.
   bool terminal = DqmAlarm::terminalStatus(status);
 
   // RETURNING so that an aid matching no row is reported rather than
@@ -1052,8 +1050,8 @@ int mu2e::DqmTool::insertLimit(DqmLimit& limit) {
 
 // Fill in the episode's level and hull span from the intervals its
 // causes point at, so neither can drift from the evidence.  Also the
-// only place a cause pointing at another source's interval can be
-// caught, since dqm.alarm_causes has no sid of its own.
+// only place a cause pointing at another source's interval is caught,
+// since dqm.alarm_causes has no sid of its own.
 
 int mu2e::DqmTool::spanFromCauses(DqmAlarm& alarm,
                                   const DqmCauseCollection& causes) {
@@ -1068,11 +1066,10 @@ int mu2e::DqmTool::spanFromCauses(DqmAlarm& alarm,
 
   // The hull takes min/max of each column independently, which can be
   // slightly wider than the true extreme (run,subrun) pair.  That is
-  // acceptable - the span is documented as a hull that does not claim
-  // every run inside it alarmed, and the causes are the ground truth.
+  // acceptable: it is a hull, and the causes are the ground truth.
   // start_run=0 is DbIoV's null and -infinity is how dqm.intervals
-  // records an absent time range; both become NULL here, since
-  // dqm.alarms uses NULL for an absent range.
+  // records an absent time range; both become NULL, which is what
+  // dqm.alarms uses for an absent range.
   std::string command =
       "SELECT count(*), count(*) FILTER (WHERE sid=" +
       std::to_string(alarm.sid()) +
@@ -1132,9 +1129,9 @@ int mu2e::DqmTool::spanFromCauses(DqmAlarm& alarm,
 //***********************************************************
 
 // Find the episode this finding continues, if there is one.  The grace
-// window is wall clock, measured from mtime: an evaluator may see run
-// 100 then 103 then 102 and cannot know whether 101 will ever arrive,
-// so no episode boundary may depend on run adjacency.
+// window is wall clock, measured from mtime, not run adjacency: an
+// evaluator sees runs out of order and cannot know whether a run it
+// has not seen will ever arrive.
 
 int mu2e::DqmTool::matchAlarm(DqmAlarm& alarm) {
   std::string command =
@@ -1142,7 +1139,8 @@ int mu2e::DqmTool::matchAlarm(DqmAlarm& alarm) {
       " and config=" + sqlQuote(alarm.config()) +
       " and subject=" + sqlQuote(alarm.subject()) +
       " and sid=" + std::to_string(alarm.sid()) +
-      " and open and mtime > now() - interval '24 hours'"
+      " and open and mtime > now() - interval '" +
+      std::to_string(DqmAlarm::graceHours) + " hours'"
       " order by mtime desc limit 1;";
 
   std::string result;
@@ -1193,9 +1191,9 @@ int mu2e::DqmTool::extendAlarm(const DqmAlarm& alarm) {
 int mu2e::DqmTool::insertAlarm(DqmAlarm& alarm) {
   // Nothing extendable matched, so this finding starts a new episode.
   // Any episode with the same identity still flagged open but outside
-  // the window has to be closed first, or alarms_one_open would reject
-  // the insert.  open is maintained lazily like this rather than by a
-  // sweeper, which is why queries must test mtime as well.
+  // the window is closed first, or alarms_one_open rejects the insert.
+  // open is maintained lazily rather than by a sweeper, which is why
+  // queries test mtime as well.
   std::string command =
       "UPDATE dqm.alarms SET open=false where algo=" + sqlQuote(alarm.algo()) +
       " and config=" + sqlQuote(alarm.config()) +
@@ -1238,7 +1236,7 @@ int mu2e::DqmTool::insertAlarm(DqmAlarm& alarm) {
 
 int mu2e::DqmTool::insertCause(DqmCause& cause, int aid) {
   // A repeated commit of the same cause is a no-op rather than an
-  // error, since keepup scripts re-run.  Note an existing row is not
+  // error, since keepup scripts re-run.  An existing row is not
   // updated, so a cause keeps the level it was first reported with;
   // the episode's level still escalates through GREATEST above.
   std::string vclause = cause.global()

@@ -127,10 +127,10 @@ CREATE TABLE dqm.alarms (
   -- max over this episode's causes, maintained on every extension
   level   INTEGER NOT NULL,
   -- Hull of what fired: run range, time range, or both, never neither.
-  -- NULL means "no range of this kind".  Note this differs from
-  -- dqm.intervals, which stores -infinity for an absent time range;
-  -- alarms are queried by time overlap constantly and -infinity makes
-  -- degenerate ranges that are easy to get wrong.  Intentional.
+  -- It does not claim that every run inside it alarmed; the causes are
+  -- the ground truth.  NULL means no range of this kind, unlike
+  -- dqm.intervals which stores -infinity.  These are queried by time
+  -- overlap, where -infinity gives degenerate ranges.
   start_run    INTEGER,
   start_subrun INTEGER,
   end_run      INTEGER,
@@ -138,22 +138,23 @@ CREATE TABLE dqm.alarms (
   start_time TIMESTAMP WITH TIME ZONE,
   end_time   TIMESTAMP WITH TIME ZONE,
   -- ctime: when the episode was opened.  mtime: when it was last
-  -- extended.  The 24 hour grace window is measured from mtime.
+  -- extended.  The grace window is measured from mtime; its length is
+  -- DqmAlarm::graceHours.
   ctime TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   mtime TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   -- merge machinery: true while the episode can still be extended.
-  -- Deliberately separate from status, which is operator workflow --
-  -- an episode can be status='active' for a week while being long
-  -- past its extension window.
+  -- Separate from status, which is operator workflow: an episode stays
+  -- active until someone acknowledges it, long past its window.
   open BOOLEAN NOT NULL DEFAULT true,
-  -- operator workflow, expected values active, acknowledged,
-  -- silenced, retired, deleted.  Left as free text rather than a CHECK
-  -- so the vocabulary can grow without a migration -- retired was
-  -- added this way, with no schema change at all.
+  -- operator workflow: active, acknowledged, silenced, retired,
+  -- deleted.  Free text rather than a CHECK so the vocabulary grows
+  -- without a migration; DqmAlarm enforces it.  retired and deleted
+  -- are terminal and also clear open.
   status      TEXT NOT NULL DEFAULT 'active',
   status_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  -- algo-internal json.  Not queryable by contract, and excluded from
-  -- print-alarms unless asked for; see checker_spec.txt section 6a.
+  -- algo-internal json, not queryable by contract.  print-alarms
+  -- omits it unless asked: its commas and newlines make the csv hard
+  -- to parse.
   note TEXT,
   CONSTRAINT alarms_pk PRIMARY KEY (aid),
   CONSTRAINT alarms_sid_fk FOREIGN KEY (sid) REFERENCES dqm.sources(sid),
@@ -164,9 +165,13 @@ CREATE TABLE dqm.alarms (
     CHECK (start_run IS NOT NULL OR start_time IS NOT NULL)
   );
 
--- At most one extendable episode per identity.  This is what makes two
--- evaluators running concurrently safe: the loser extends instead of
--- inserting a duplicate.
+-- At most one extendable episode per identity.  If two evaluators race
+-- to open the same episode, the loser fails cleanly rather than
+-- inserting a duplicate: it takes a unique violation, its transaction
+-- rolls back, and commit-alarm returns non-zero.  That is deliberate.
+-- The race needs two evaluators on one identity, which already means
+-- something upstream is wrong, and a driver must not record a period
+-- as done unless the commit returned 0.
 CREATE UNIQUE INDEX alarms_one_open
   ON dqm.alarms (algo,config,subject,sid) WHERE open;
 
@@ -184,11 +189,10 @@ GRANT UPDATE ON dqm.alarms_aid_seq TO dqmwrite;
 -- rows are the evidence for an episode: which interval, and which
 -- variable if the test was about one variable.  This is the ground
 -- truth that the episode's hull span only approximates.
--- There is deliberately no sid column (it would duplicate
--- dqm.alarms.sid with nothing able to keep them consistent) and no nid
--- column (since dqm.numbers is unique on (vid,sid,iid), a cause
--- already identifies the number, and no constraint could assert that a
--- stored nid's own sid/iid/vid matched this row's).
+-- No sid column: it would duplicate dqm.alarms.sid with nothing able
+-- to keep them consistent.  No nid column: dqm.numbers is unique on
+-- (vid,sid,iid), so a cause already identifies the number, and no
+-- constraint could assert a stored nid matched this row.
 CREATE TABLE dqm.alarm_causes (
   cid SERIAL,
   aid INTEGER NOT NULL,
@@ -204,12 +208,10 @@ CREATE TABLE dqm.alarm_causes (
   CONSTRAINT causes_level CHECK (level BETWEEN 0 AND 3)
   );
 
--- Two partial indexes, not one UNIQUE (aid,iid,vid), because in
--- postgres NULLs are distinct in a unique constraint by default -- so a
--- plain constraint would accept unlimited duplicate global causes,
--- breaking idempotency for exactly those rows.  UNIQUE NULLS NOT
--- DISTINCT would do this in one line but arrived in postgres 15, and
--- this server is 14.23.
+-- Two partial indexes rather than one UNIQUE (aid,iid,vid): postgres
+-- treats NULLs as distinct in a unique constraint, so a plain one
+-- accepts duplicate global causes.  UNIQUE NULLS NOT DISTINCT does it
+-- in one line but needs postgres 15; this server is 14.23.
 CREATE UNIQUE INDEX causes_unique_var
   ON dqm.alarm_causes (aid,iid,vid) WHERE vid IS NOT NULL;
 CREATE UNIQUE INDEX causes_unique_global
@@ -220,11 +222,9 @@ GRANT INSERT ON dqm.alarm_causes TO dqmwrite;
 GRANT UPDATE ON dqm.alarm_causes_cid_seq TO dqmwrite;
 
 
--- The triage query: an alarm's causes plus the actual measurements
--- that triggered them.  This is what dqmTool dumps as json.  LEFT JOIN
--- so that global causes survive with a null nid, which falls out
--- correctly since a null vid matches nothing.  Verified readable
--- through the query engine; see checker_spec.txt section 6a.
+-- The triage query: an alarm's causes plus the measurements that
+-- triggered them.  LEFT JOIN so global causes survive with a null
+-- nid, since a null vid matches nothing.
 CREATE VIEW dqm.alarm_cause_numbers AS
   SELECT c.cid, c.aid, a.sid, c.iid, c.vid, c.level,
          n.nid, n.valuex, n.sigma, n.code

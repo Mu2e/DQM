@@ -48,7 +48,7 @@ class DqmTool {
                   const std::string& start = "", const std::string& end = "",
                   const std::string& limit = "");
   // take a finding from one evaluator instance and either extend the
-  // episode it continues or open a new one; see checker_spec.txt
+  // episode it continues or open a new one
   int commitAlarm(const std::string& algo = "", const std::string& config = "",
                   const std::string& subject = "", const std::string& sid = "",
                   const std::string& causes = "",
@@ -63,9 +63,9 @@ class DqmTool {
   // read a table into a string.  select defaults to all columns; pass
   // a column list where that is not wanted, as print-alarms does to
   // keep the json note out of the csv.  where clauses are "col:op:val"
-  // and are ANDed together.  Note the query engine accepts only
-  // certain ops - eq and ne are known to work, and an unsupported one
-  // returns no rows rather than an error, so do not guess.
+  // and are ANDed.  The query engine accepts only certain ops - eq and
+  // ne work, and an unsupported one returns no rows rather than an
+  // error, so do not guess.
   int readTable(const std::string& table, std::string& result,
                 const std::string& select = "*",
                 const StringVec& where = StringVec());

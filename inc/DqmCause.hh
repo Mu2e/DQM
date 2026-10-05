@@ -5,7 +5,7 @@
 // one piece of evidence for an alarm episode: the interval it was seen
 // in, and the variable it concerns if it concerns a single variable.
 // A cause with no vid is a global test - one about the interval as a
-// whole.  See checker_spec.txt.
+// whole.
 //
 
 #include <string>

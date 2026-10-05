@@ -2,10 +2,10 @@
 #define DQM_DqmAlarm_hh
 
 //
-// one alarm episode.  Identity is (algo, config, subject, sid) - that is
-// what makes two reports "the same alarm".  The run and time spans are
-// a hull of what fired and do not claim that every run inside them
-// alarmed; DqmCause is the ground truth.  See checker_spec.txt.
+// one alarm episode.  Identity is (algo, config, subject, sid) - that
+// is what makes two reports the same alarm.  The run and time spans
+// are a hull of what fired and do not claim that every run inside them
+// alarmed; DqmCause is the ground truth.
 //
 
 #include <algorithm>
@@ -16,12 +16,18 @@ namespace mu2e {
 
 class DqmAlarm {
  public:
+  // An episode stays extendable for this long after its last
+  // extension, measured from mtime.  Wall clock rather than run
+  // adjacency, because an evaluator sees runs out of order and cannot
+  // know whether a run it has not seen will ever arrive.  A finding
+  // arriving later opens a new episode instead.  One value for all
+  // evaluators for now; it belongs per (algo, config) eventually.
+  static constexpr int graceHours = 24;
+
   // The operator workflow vocabulary.  Kept here rather than as a sql
-  // CHECK constraint so it can grow without a migration, but checked
-  // in code so a typo cannot slip in as free text - which matters
-  // because terminalStatus below is an exact match, so a misspelling
-  // would otherwise be stored verbatim and silently leave an episode
-  // open.
+  // CHECK constraint so it can grow without a migration, but enforced
+  // in code: terminalStatus below is an exact match, so a misspelling
+  // would otherwise store and silently leave an episode open.
   static const std::vector<std::string>& statusValues() {
     static const std::vector<std::string> values{
         "active", "acknowledged", "silenced", "retired", "deleted"};
