@@ -5,9 +5,11 @@
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/tokenizer.hpp>
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <set>
 #include <string>
 
 namespace {
@@ -21,6 +23,13 @@ std::string sqlQuote(const std::string& str) {
   }
   out += "'";
   return out;
+}
+
+// an sql literal for a value that may be absent, where an empty string
+// means database NULL.  quote=false for numeric columns.
+std::string sqlOrNull(const std::string& str, bool quote = true) {
+  if (str.empty()) return "NULL";
+  return quote ? sqlQuote(str) : str;
 }
 }  // namespace
 
@@ -321,6 +330,205 @@ int mu2e::DqmTool::commitLimit(const std::string& sources,
 
 //***********************************************************
 
+// Take one finding from one evaluator instance and record it.  The
+// evaluator supplies the subject and the causes; algo, config and sid
+// identify the instance it came from.  Identity is the four together,
+// and a finding either extends the episode it matches inside the grace
+// window or opens a new one.  See checker_spec.txt sections 3 and 5.
+
+int mu2e::DqmTool::commitAlarm(const std::string& algos,
+                               const std::string& configs,
+                               const std::string& subjects,
+                               const std::string& sids,
+                               const std::string& causestr,
+                               const std::string& note) {
+  int rc;
+
+  // **** interpret the evaluator identity
+
+  if (algos.empty() || configs.empty() || subjects.empty() || sids.empty()) {
+    std::cout << "ERROR - commit-alarm requires --algo, --config, --subject "
+                 "and --sid"
+              << std::endl;
+    return 1;
+  }
+  if (sids.find_first_not_of("0123456789") != std::string::npos) {
+    std::cout << "ERROR - commit-alarm --sid is not an integer: " << sids
+              << std::endl;
+    return 1;
+  }
+  int sid = std::stoi(sids);
+
+  DqmAlarm alarm(algos, configs, subjects, sid);
+  alarm.setNote(note);
+
+  // **** interpret the causes
+
+  if (causestr.empty()) {
+    std::cout << "ERROR - commit-alarm requires --cause" << std::endl;
+    return 1;
+  }
+
+  // a csv string, or a filespec of a text file of them, as --value does
+  StringVec lines;
+  if (std::count(causestr.begin(), causestr.end(), ',') > 0) {
+    lines.emplace_back(causestr);
+  } else {
+    std::ifstream myfile;
+    myfile.open(causestr);
+    if (!myfile.is_open()) {
+      std::cout << "ERROR - failed to open file " << causestr << std::endl;
+      return 1;
+    }
+    std::string line;
+    while (std::getline(myfile, line)) {
+      if (!line.empty()) lines.emplace_back(line);
+    }
+  }
+
+  DqmCauseCollection causes;
+  for (auto const& line : lines) {
+    causes.emplace_back(DqmCause(line));
+  }
+
+  // a finding must have at least one cause
+  if (causes.empty()) {
+    std::cout << "ERROR - commit-alarm found no causes in " << causestr
+              << std::endl;
+    return 1;
+  }
+
+  if (_verbose > 2) {
+    std::cout << "Running commit-alarm with parameters:" << std::endl;
+    std::cout << "algo    :" << algos << std::endl;
+    std::cout << "config  :" << configs << std::endl;
+    std::cout << "subject :" << subjects << std::endl;
+    std::cout << "sid     :" << sids << std::endl;
+    std::cout << "causes  :" << causes.size() << std::endl;
+    std::cout << "note    :" << note << std::endl;
+  }
+
+  // **** write it
+
+  std::string command, result;
+  rc = _sql.connect();
+  if (rc) return rc;
+
+  command = "SET ROLE dqmWrite;";
+  rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  // Level and hull span come from the causes' own intervals, so they
+  // cannot drift from the evidence.  This also validates the causes,
+  // and is deliberately done before BEGIN below: it is the one step
+  // that can fail on a check of ours rather than on an sql error, and
+  // a failed check has to leave no transaction open behind it.
+  rc = spanFromCauses(alarm, causes);
+  if (rc) return rc;
+
+  // Unlike the other commit paths, this one does need a transaction:
+  // matching an episode and then extending or inserting it is not a
+  // single atomic step, and two evaluators may run at once.  Every
+  // failure past this point is an sql error, and DbSql::execute
+  // disconnects on those, which aborts the transaction - so the early
+  // returns below cannot leave a half-written episode.
+  command = "BEGIN;";
+  rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  rc = matchAlarm(alarm);
+  if (rc) return rc;
+
+  if (alarm.aid() >= 0) {
+    rc = extendAlarm(alarm);
+    if (rc) return rc;
+  } else {
+    rc = insertAlarm(alarm);
+    if (rc) return rc;
+  }
+
+  for (auto& cause : causes) {
+    rc = insertCause(cause, alarm.aid());
+    if (rc) return rc;
+  }
+
+  command = "COMMIT;";
+  rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  rc = _sql.disconnect();
+  if (rc) return rc;
+
+  return 0;
+}
+
+//***********************************************************
+
+// set an episode's operator status.  This is deliberately independent
+// of open, which is merge machinery - acknowledging an alarm does not
+// make it extendable or unextendable.
+
+int mu2e::DqmTool::alarmStatus(const std::string& aids,
+                               const std::string& status) {
+  if (aids.empty() || status.empty()) {
+    std::cout << "ERROR - alarm-status requires --aid and --status"
+              << std::endl;
+    return 1;
+  }
+  if (aids.find_first_not_of("0123456789") != std::string::npos) {
+    std::cout << "ERROR - alarm-status --aid is not an integer: " << aids
+              << std::endl;
+    return 1;
+  }
+  if (!DqmAlarm::validStatus(status)) {
+    std::cout << "ERROR - alarm-status --status must be one of "
+              << DqmAlarm::statusList() << ", got " << status << std::endl;
+    return 1;
+  }
+
+  std::string command, result;
+  int rc = _sql.connect();
+  if (rc) return rc;
+
+  command = "SET ROLE dqmWrite;";
+  rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  // retired and deleted are terminal, so they close the episode as
+  // well: a later matching finding should start a fresh one rather
+  // than resurrect this one.  active, acknowledged and silenced leave
+  // open alone, since an acknowledged problem that is still going on
+  // should keep extending rather than spawning duplicate episodes.
+  bool terminal = DqmAlarm::terminalStatus(status);
+
+  // RETURNING so that an aid matching no row is reported rather than
+  // silently doing nothing
+  command = "UPDATE dqm.alarms SET status=" + sqlQuote(status) +
+            ", status_time=now()";
+  if (terminal) command += ", open=false";
+  command += " WHERE aid=" + aids + " RETURNING aid;";
+
+  rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  if (result.empty()) {
+    std::cout << "ERROR - no alarm with aid " << aids << std::endl;
+    return 1;
+  }
+
+  if (_verbose > 0) {
+    std::cout << "aid " << aids << " status set to " << status
+              << (terminal ? " and closed" : "") << std::endl;
+  }
+
+  rc = _sql.disconnect();
+  if (rc) return rc;
+
+  return 0;
+}
+
+//***********************************************************
+
 int mu2e::DqmTool::printSources(bool heading) {
   int rc = readTable("dqm.sources", _result);
   if (heading) {
@@ -357,6 +565,61 @@ int mu2e::DqmTool::printFiles(bool heading) {
   int rc = readTable("dqm.files", _result);
   if (heading) {
     _result = "fid, sid, iid, filename\n" + _result;
+  }
+  return rc;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::printAlarms(bool heading, bool note, bool live) {
+  // note holds algo-internal json, whose commas and newlines make the
+  // query engine's csv awkward to parse downstream, so it is named
+  // explicitly rather than arriving with a select *
+  std::string select(
+      "aid,algo,config,subject,sid,level,"
+      "start_run,start_subrun,end_run,end_subrun,start_time,end_time,"
+      "ctime,mtime,open,status,status_time");
+  if (note) select += ",note";
+
+  // live means not in a terminal state.  The terminal statuses come
+  // from the vocabulary rather than being repeated here, so a status
+  // added there is picked up by this selection too.
+  StringVec where;
+  if (live) {
+    for (auto const& sv : DqmAlarm::statusValues()) {
+      if (DqmAlarm::terminalStatus(sv)) where.emplace_back("status:ne:" + sv);
+    }
+  }
+
+  int rc = readTable("dqm.alarms", _result, select, where);
+  if (heading) {
+    _result = select + "\n" + _result;
+  }
+  return rc;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::printCauses(bool heading, bool numbers,
+                               const std::string& aid) {
+  // the view joins each cause to the measurement that triggered it
+  std::string table(numbers ? "dqm.alarm_cause_numbers" : "dqm.alarm_causes");
+  std::string select(numbers ? "cid,aid,sid,iid,vid,level,nid,valuex,sigma,code"
+                             : "cid,aid,iid,vid,level");
+
+  StringVec where;
+  if (!aid.empty()) {
+    if (aid.find_first_not_of("0123456789") != std::string::npos) {
+      std::cout << "ERROR - print-causes --aid is not an integer: " << aid
+                << std::endl;
+      return 1;
+    }
+    where.emplace_back("aid:eq:" + aid);
+  }
+
+  int rc = readTable(table, _result, select, where);
+  if (heading) {
+    _result = select + "\n" + _result;
   }
   return rc;
 }
@@ -499,9 +762,9 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
 }
 
 //***********************************************************
-int mu2e::DqmTool::readTable(const std::string& table, std::string& result) {
-  std::string select("*");
-  StringVec where;
+int mu2e::DqmTool::readTable(const std::string& table, std::string& result,
+                             const std::string& select,
+                             const StringVec& where) {
   std::string order;
   int rc = _reader.query(result, select, table, where, order);
   return rc;
@@ -782,5 +1045,231 @@ int mu2e::DqmTool::insertLimit(DqmLimit& limit) {
   }
 
   limit.setLid(lid);
+  return 0;
+}
+
+//***********************************************************
+
+// Fill in the episode's level and hull span from the intervals its
+// causes point at, so neither can drift from the evidence.  Also the
+// only place a cause pointing at another source's interval can be
+// caught, since dqm.alarm_causes has no sid of its own.
+
+int mu2e::DqmTool::spanFromCauses(DqmAlarm& alarm,
+                                  const DqmCauseCollection& causes) {
+  std::set<int> iids;
+  for (auto const& cause : causes) iids.insert(cause.iid());
+
+  std::string list;
+  for (auto iid : iids) {
+    if (!list.empty()) list += ",";
+    list += std::to_string(iid);
+  }
+
+  // The hull takes min/max of each column independently, which can be
+  // slightly wider than the true extreme (run,subrun) pair.  That is
+  // acceptable - the span is documented as a hull that does not claim
+  // every run inside it alarmed, and the causes are the ground truth.
+  // start_run=0 is DbIoV's null and -infinity is how dqm.intervals
+  // records an absent time range; both become NULL here, since
+  // dqm.alarms uses NULL for an absent range.
+  std::string command =
+      "SELECT count(*), count(*) FILTER (WHERE sid=" +
+      std::to_string(alarm.sid()) +
+      "),"
+      " min(start_run) FILTER (WHERE start_run>0),"
+      " min(start_subrun) FILTER (WHERE start_run>0),"
+      " max(end_run) FILTER (WHERE start_run>0),"
+      " max(end_subrun) FILTER (WHERE start_run>0),"
+      " min(start_time) FILTER (WHERE start_time<>'-infinity'),"
+      " max(end_time) FILTER (WHERE end_time<>'-infinity')"
+      " FROM dqm.intervals WHERE iid IN (" +
+      list + ");";
+
+  std::string result;
+  int rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  StringVec sv = splitString(result, ",");
+  if (sv.size() != 8) {
+    std::cout << "Error - unexpected interval span result: " << result << "\n";
+    return 1;
+  }
+
+  if (std::stoul(sv[0]) != iids.size()) {
+    std::cout << "Error - some cause iids do not exist, found " << sv[0]
+              << " of " << iids.size() << "\n";
+    return 1;
+  }
+  if (sv[1] != sv[0]) {
+    std::cout << "Error - some cause intervals do not belong to sid "
+              << alarm.sid() << "\n";
+    return 1;
+  }
+
+  alarm.setRuns(sv[2], sv[3], sv[4], sv[5]);
+  alarm.setTimes(sv[6], sv[7]);
+
+  if (!alarm.hasRange()) {
+    std::cout << "Error - the cause intervals have neither a run range nor a "
+                 "time range\n";
+    return 1;
+  }
+
+  int level = 0;
+  for (auto const& cause : causes) level = std::max(level, cause.level());
+  alarm.setLevel(level);
+
+  if (_verbose > 1) {
+    std::cout << "span runs " << sv[2] << ":" << sv[3] << "-" << sv[4] << ":"
+              << sv[5] << " times " << sv[6] << " to " << sv[7] << " level "
+              << level << std::endl;
+  }
+
+  return 0;
+}
+
+//***********************************************************
+
+// Find the episode this finding continues, if there is one.  The grace
+// window is wall clock, measured from mtime: an evaluator may see run
+// 100 then 103 then 102 and cannot know whether 101 will ever arrive,
+// so no episode boundary may depend on run adjacency.
+
+int mu2e::DqmTool::matchAlarm(DqmAlarm& alarm) {
+  std::string command =
+      "select aid from dqm.alarms where algo=" + sqlQuote(alarm.algo()) +
+      " and config=" + sqlQuote(alarm.config()) +
+      " and subject=" + sqlQuote(alarm.subject()) +
+      " and sid=" + std::to_string(alarm.sid()) +
+      " and open and mtime > now() - interval '24 hours'"
+      " order by mtime desc limit 1;";
+
+  std::string result;
+  int rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  if (!result.empty()) {
+    alarm.setAid(std::stoi(result));
+    if (_verbose > 0) {
+      std::cout << "extending aid " << alarm.aid() << std::endl;
+    }
+  }
+
+  return 0;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::extendAlarm(const DqmAlarm& alarm) {
+  // LEAST and GREATEST ignore NULL arguments in postgres, so the hull
+  // widens correctly whether or not the stored episode and the new
+  // finding each have a range of that kind
+  std::string command =
+      "UPDATE dqm.alarms SET level=GREATEST(level," +
+      std::to_string(alarm.level()) + "), start_run=LEAST(start_run," +
+      sqlOrNull(alarm.startRun(), false) + "), start_subrun=LEAST(start_subrun," +
+      sqlOrNull(alarm.startSubrun(), false) + "), end_run=GREATEST(end_run," +
+      sqlOrNull(alarm.endRun(), false) + "), end_subrun=GREATEST(end_subrun," +
+      sqlOrNull(alarm.endSubrun(), false) + "), start_time=LEAST(start_time," +
+      sqlOrNull(alarm.startTime()) + "), end_time=GREATEST(end_time," +
+      sqlOrNull(alarm.endTime()) + "), mtime=now() WHERE aid=" +
+      std::to_string(alarm.aid()) + " RETURNING aid;";
+
+  std::string result;
+  int rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  if (result.empty()) {
+    std::cout << "Error - failed to extend aid " << alarm.aid() << "\n";
+    return 1;
+  }
+
+  return 0;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::insertAlarm(DqmAlarm& alarm) {
+  // Nothing extendable matched, so this finding starts a new episode.
+  // Any episode with the same identity still flagged open but outside
+  // the window has to be closed first, or alarms_one_open would reject
+  // the insert.  open is maintained lazily like this rather than by a
+  // sweeper, which is why queries must test mtime as well.
+  std::string command =
+      "UPDATE dqm.alarms SET open=false where algo=" + sqlQuote(alarm.algo()) +
+      " and config=" + sqlQuote(alarm.config()) +
+      " and subject=" + sqlQuote(alarm.subject()) +
+      " and sid=" + std::to_string(alarm.sid()) + " and open;";
+
+  std::string result;
+  int rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  // ctime, mtime, open, status and status_time take their defaults
+  command =
+      "INSERT INTO dqm.alarms (algo,config,subject,sid,level,"
+      "start_run,start_subrun,end_run,end_subrun,start_time,end_time,note) "
+      "VALUES (" +
+      sqlQuote(alarm.algo()) + "," + sqlQuote(alarm.config()) + "," +
+      sqlQuote(alarm.subject()) + "," + std::to_string(alarm.sid()) + "," +
+      std::to_string(alarm.level()) + "," +
+      sqlOrNull(alarm.startRun(), false) + "," +
+      sqlOrNull(alarm.startSubrun(), false) + "," +
+      sqlOrNull(alarm.endRun(), false) + "," +
+      sqlOrNull(alarm.endSubrun(), false) + "," +
+      sqlOrNull(alarm.startTime()) + "," + sqlOrNull(alarm.endTime()) + "," +
+      sqlOrNull(alarm.note()) + ") RETURNING aid;";
+
+  rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  int aid = std::stoi(result);
+
+  if (_verbose > 0) {
+    std::cout << "new aid is " << aid << std::endl;
+  }
+
+  alarm.setAid(aid);
+  return 0;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::insertCause(DqmCause& cause, int aid) {
+  // A repeated commit of the same cause is a no-op rather than an
+  // error, since keepup scripts re-run.  Note an existing row is not
+  // updated, so a cause keeps the level it was first reported with;
+  // the episode's level still escalates through GREATEST above.
+  std::string vclause = cause.global()
+                            ? std::string(" and vid is null")
+                            : " and vid=" + std::to_string(cause.vid());
+
+  std::string command = "select cid from dqm.alarm_causes where aid=" +
+                        std::to_string(aid) +
+                        " and iid=" + std::to_string(cause.iid()) + vclause +
+                        ";";
+
+  std::string result;
+  int rc = _sql.execute(command, result);
+  if (rc) return rc;
+
+  if (result.empty()) {
+    command =
+        "INSERT INTO dqm.alarm_causes (aid,iid,vid,level)  VALUES (" +
+        std::to_string(aid) + "," + std::to_string(cause.iid()) + "," +
+        (cause.global() ? std::string("NULL") : std::to_string(cause.vid())) +
+        "," + std::to_string(cause.level()) + ") RETURNING cid;";
+    rc = _sql.execute(command, result);
+    if (rc) return rc;
+  }
+
+  int cid = std::stoi(result);
+
+  if (_verbose > 1) {
+    std::cout << "cid is " << cid << std::endl;
+  }
+
+  cause.setCid(cid);
   return 0;
 }
