@@ -92,7 +92,7 @@ int mu2e::DqmMetrics::addBinFrac(TH1D const* hh, const char* group,
       _ncoll.emplace_back("0.0", "0.0", std::to_string(cstat));
   } else {
     float x = hh->GetBinContent(bin) / hh->GetEntries();
-    float s = sqrt(x * (1 - x) / hh->GetEntries());
+    float s = std::sqrt(x * (1 - x) / hh->GetEntries());
     std::ostringstream vv;
     vv << std::fixed << std::setprecision(precision) << x;
     std::ostringstream ss;

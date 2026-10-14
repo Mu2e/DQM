@@ -16,7 +16,6 @@ class DqmSource {
   // possible constructions:
   // process, stream, aggregation, version
   // sid, process, stream, aggregation, version
-  // ntd.dqm_PROCESS.STREAM_AGGREGATION_VERSION.RUN_SUBRUN.root
   DqmSource(const std::string& str);
   DqmSource(const std::string& process, const std::string& stream,
             const std::string& aggregation, const std::string& version,
@@ -28,8 +27,6 @@ class DqmSource {
   const std::string& aggregation() const { return _aggregation; }
   const std::string& version() const { return _version; }
 
-  // like RUN:SUBRUN, only if initialized from a file name
-  const std::string& run() const { return _run; }
   std::string csv() const {
     return _process + "," + _stream + "," + _aggregation + "," + _version;
   }
@@ -42,7 +39,6 @@ class DqmSource {
   std::string _stream;
   std::string _aggregation;
   std::string _version;
-  std::string _run;
 };
 
 typedef std::vector<DqmSource> DqmSourceCollection;

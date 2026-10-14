@@ -1,6 +1,5 @@
 #include "DQM/inc/DqmSource.hh"
 #include "Offline/GeneralUtilities/inc/splitString.hh"
-#include <algorithm>
 #include <stdexcept>
 
 //****************************************************
@@ -21,31 +20,9 @@ mu2e::DqmSource::DqmSource(const std::string& str) {
     _aggregation = sv[3];
     _version = sv[4];
   } else {
-    _sid = -1;
-    sv = splitString(str, ".");
-    if (sv.size() == 6) {
-      StringVec sv2;
-      sv2 = splitString(sv[2], "_");
-      if (sv2.size() < 2)
-        throw std::invalid_argument(
-            "DqMSource could not parse file description " + sv[2]);
-      _process = sv2[1];
-      sv2 = splitString(sv[3], "_");
-      if (sv2.size() < 3)
-        throw std::invalid_argument(
-            "DqMSource could not parse file configuration " + sv[3]);
-      _stream = sv2[0];
-      _aggregation = sv2[1];
-      _version = sv2[2];
-      sv2 = splitString(sv[4], "_");
-      if (sv2.size() < 2)
-        throw std::invalid_argument(
-            "DqMSource could not parse file sequencer " + sv[4]);
-      _run = sv2[0] + ":" + sv2[1];
-    } else {
-      throw std::invalid_argument(
-          "DqMSource string does not match any pattern " + str);
-    }
+    throw std::invalid_argument(
+        "DqmSource requires csv process,stream,aggregation,version, got " +
+        str);
   }
 
   if (_process.empty() || _stream.empty() || _aggregation.empty() ||

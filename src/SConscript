@@ -19,6 +19,13 @@ mainlib = helper.make_mainlib ( [ 'mu2e_DbService',
                                   rootlibs ] )
 
 helper.make_plugins( [ mainlib,
+                       'mu2e_CRVDQM',
+                       'mu2e_DQMHelpers',
+                       'mu2e_CRVConditions',
+                       'mu2e_CosmicRayShieldGeom',
+                       'mu2e_ProditionsService',
+                       'mu2e_DbTables',
+                       'MF_MessageLogger',
                        'mu2e_DataProducts',
                        'mu2e_RecoDataProducts',
                        'mu2e_MCDataProducts',

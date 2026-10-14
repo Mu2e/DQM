@@ -17,7 +17,7 @@ int mu2e::DqmMetrics::crv(TDirectory& dir) {
   addMean(hh, "crv", "digi", "meanADC", 20, 2);
   addRMS(hh, "crv", "digi", "rmsADC", 20, 2);
 
-  hh = (TH1D*)dir.Get("NPulses2");
+  hh = (TH1D*)dir.Get("NPulse2");
   addMean(hh, "crv", "pulse", "meanN", 20, 2);
 
   hh = (TH1D*)dir.Get("PEr");
