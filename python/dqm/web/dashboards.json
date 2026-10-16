@@ -1,0 +1,75 @@
+{
+  "_comment": [
+    "Preconfigured sets of timelines for the DQM web application.",
+    "",
+    "Edit this file to add your own, or point DQM_DASHBOARDS at a different",
+    "one; it is read when the application starts. See dqm/web/dashboards.py",
+    "for the full format.",
+    "",
+    "A series is named 'process/stream/aggregation/version' plus",
+    "'groupx/subgroup/namex'. Names are preferred over raw sid/vid numbers:",
+    "they say what the series is, and they keep meaning if the database is",
+    "rebuilt with different ids. Names are resolved when a dashboard is first",
+    "used, so a stale entry reports itself in the application rather than",
+    "stopping the app from starting.",
+    "",
+    "mode is 'time' or 'run'. window is days or runs; omit it for everything.",
+    "options may contain 'limits' and 'logy'."
+  ],
+
+  "dashboards": [
+    {
+      "name": "Nightly reco - calorimeter",
+      "description": "Cluster energies and multiplicity from the nightly reco validation",
+      "mode": "time",
+      "window": 90,
+      "options": ["limits"],
+      "series": [
+        {"source": "valNightly/reco/day/0", "metric": "cal/clus/meanE0"},
+        {"source": "valNightly/reco/day/0", "metric": "cal/clus/meanE1"},
+        {"source": "valNightly/reco/day/0", "metric": "cal/clus/meanN"}
+      ]
+    },
+
+    {
+      "name": "Nightly job resources",
+      "description": "CPU and memory across the nightly validation streams",
+      "mode": "time",
+      "window": 180,
+      "options": [],
+      "series": [
+        {"source": "valNightly/reco/day/0", "metric": "ops/stats/CPU"},
+        {"source": "valNightly/reco/day/0", "metric": "ops/stats/MEM"},
+        {"source": "valNightly/ceSimReco/day/0", "metric": "ops/stats/CPU"},
+        {"source": "valNightly/ceSimReco/day/0", "metric": "ops/stats/MEM"}
+      ]
+    },
+
+    {
+      "name": "CRV calibration - recent runs",
+      "description": "Calibration constants for the first two CRV sectors",
+      "mode": "run",
+      "window": 50,
+      "options": ["limits"],
+      "series": [
+        {"source": "crvreco/kpp_crv/file/005-001",
+         "metric": "CRV/crvCalibConstants_CRVsector0/Centroid"},
+        {"source": "crvreco/kpp_crv/file/005-001",
+         "metric": "CRV/crvCalibConstants_CRVsector1/Centroid"}
+      ]
+    },
+
+    {
+      "name": "CRV PE yield - all history",
+      "description": "Photoelectron yield per sector, over every run on record",
+      "mode": "run",
+      "options": [],
+      "series": [
+        {"source": "crvreco/kpp_crv/file/005-001",
+         "metric": "CRV/crvPEsMPV_CRVsector0/Centroid"},
+        {"source": "crvreco/kpp_crv/file/005-001",
+         "metric": "CRV/crvPEsMPV_CRVsector1/Centroid"}
+      ]
+    }
+  ]
+}

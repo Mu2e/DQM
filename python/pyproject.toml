@@ -1,0 +1,121 @@
+[build-system]
+requires = ["setuptools>=68", "wheel", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+# Version comes from the nearest git tag rather than a hand-maintained field,
+# the same arrangement the aitools MCP packages use. `root` points at the
+# repository root, one level up from this file -- pip and uv build git installs
+# in place inside the clone, so the .git directory is still there to read.
+# fallback_version covers a build from a source tarball with no git history,
+# where setuptools_scm would otherwise fail the build outright.
+[tool.setuptools_scm]
+root = ".."
+fallback_version = "0.0.0+unknown"
+
+[project]
+name = "mu2e-dqm"
+dynamic = ["version"]
+description = "Mu2e Data Quality Monitoring: database access, extraction, evaluation and display"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+
+# One distribution for every DQM component, because they share a schema: the
+# extractor writes metrics, the evaluator reads them and compares against
+# limits, and the web app displays both. They must agree on table shapes and on
+# the DqmNumber/DqmLimit/DqmAlarm enum values, and a single version makes that
+# agreement checkable -- "mu2e-dqm 1.5.0" names a coherent set. Split across
+# several independently-versioned distributions, a stale evaluator and a fresh
+# extractor could disagree about what code=1 means with nothing to catch it.
+#
+# The deps here are only what the always-importable parts need: dqm.schema,
+# dqm.timeutil and dqm.frames need nothing beyond pandas, and dqm.reader adds
+# requests. Heavier components declare their own needs -- see the extras below
+# and the ROOT note.
+dependencies = [
+  "pandas>=2.0.0",
+  "requests>=2.31.0"
+]
+
+# Extras are kept coarse on purpose. Fragmenting them further would shave a
+# hundred megabytes off some deployment at the cost of a combinatorial matrix
+# nobody can keep straight -- and a stack that is understandable is worth more
+# here than one that is minimal.
+#
+# Reading ROOT files goes through uproot rather than PyROOT, so it needs no
+# Muse or Offline environment, no cvmfs, and no compiled extension: dqm.hist
+# and dqm.plot are plain pip installs. The xrootd wheel covers root:// URLs.
+#
+# The one component that still cannot be expressed here is dqm.writer, which
+# drives the compiled dqmTool executable and needs a Kerberos credential --
+# a documented precondition rather than anything packaging can enforce. That
+# is why dqm/__init__.py imports no subpackage: every deployment installs the
+# same distribution and imports only the parts its environment can satisfy.
+[project.optional-dependencies]
+# Reading and comparing histograms from ROOT files. scipy is here rather than
+# with the fitting tools because the KolmogorovTest port needs it, and
+# comparing two files is a reading operation -- `hist` alone should give a
+# complete file-comparison capability.
+hist = [
+  "uproot>=5.0",
+  "hist>=2.7",
+  "fsspec-xrootd>=0.2",
+  "scipy>=1.10"
+]
+# Fitting histograms here, rather than reading a fit stored in the file
+# (which needs nothing beyond the hist extra).
+fit = [
+  "lmfit>=1.2"
+]
+# Finding files through metacat, and turning a Mu2e file name into a path.
+# mu2e-mdh is requested WITHOUT its [full] extra: that extra pins rucio and
+# data-dispatcher, a heavy install this does not need. Everything used here is
+# in mdh_names, which the base install provides and which imports nothing
+# beyond the standard library -- see dqm/catalog.py.
+catalog = [
+  "metacat>=3.40",
+  "mu2e-mdh @ git+https://github.com/Mu2e/mdh"
+]
+# Rendering: plotly for the browser, matplotlib+mplhep for report images.
+plot = [
+  "plotly>=5.18",
+  "matplotlib>=3.7",
+  "mplhep>=0.3"
+]
+# The single Dash application, which needs all of the above plus a production
+# WSGI server -- dash's own app.run is a development server only.
+web = [
+  "mu2e-dqm[hist,fit,plot,catalog]",
+  "dash>=3.0",
+  "gunicorn>=21.0"
+]
+# Everything, for a development checkout.
+all = [
+  "mu2e-dqm[hist,fit,plot,catalog,web]"
+]
+
+[project.urls]
+Homepage = "https://github.com/Mu2e/DQM"
+
+[project.scripts]
+dqm-reader = "dqm.reader.cli:main"
+dqm-web = "dqm.web.cli:main"
+
+# This directory also holds standalone analysis and plotting scripts that are
+# run from a checkout and are not part of the installable package. Naming the
+# package explicitly keeps them out of the wheel, and stops setuptools'
+# auto-discovery from tripping over the several top-level modules beside them.
+#
+# "dqm" and "dqm.*" rather than "dqm*": the glob form would also match a
+# sibling top-level directory whose name merely starts with dqm (dqmReader,
+# dqmFileData), pulling it into the wheel as a separate top-level package.
+# The web application's CSS lives beside its code rather than in a Python
+# string, so it needs declaring as package data -- without this it is present
+# in a checkout and silently absent from an installed wheel, which is the kind
+# of difference that only surfaces after a deployment.
+[tool.setuptools.package-data]
+"dqm.web" = ["assets/*", "dashboards.json"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dqm", "dqm.*"]
