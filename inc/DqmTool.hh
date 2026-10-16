@@ -27,7 +27,7 @@ namespace mu2e {
 
 class DqmTool {
  public:
-  DqmTool() : _verbose(0) {}
+  DqmTool() : _verbose(0), _dryrun(0), _fakeId(fakeIdBase) {}
 
   // initialize the database connections before any other calls
   int init();
@@ -55,11 +55,24 @@ class DqmTool {
                   const std::string& note = "");
   int alarmStatus(const std::string& aid = "", const std::string& status = "");
   void setVerbose(int verbose) { _verbose = verbose; }
+  // In dry run every statement that would change the database is printed
+  // instead of run, while the lookups around it still run for real - so the
+  // report reflects the database as it actually is, not a guess.  See
+  // DqmTool::execute for exactly what is suppressed.
+  void setDryrun(int dryrun) { _dryrun = dryrun; }
 
   // retrieve text output from a print command call
   const std::string& getResult() const { return _result; }
 
  private:
+  // run one sql statement, honouring dry run.  Everything that reaches the
+  // database goes through here rather than calling _sql.execute directly,
+  // so there is one place where a write can be intercepted and one place to
+  // check when asking whether something can modify the database.
+  int execute(const std::string& command, std::string& result);
+  // true if this statement would change the database
+  static bool isWrite(const std::string& command);
+
   // read a table into a string.  select defaults to all columns; pass
   // a column list where that is not wanted, as print-alarms does to
   // keep the json note out of the csv.  where clauses are "col:op:val"
@@ -93,6 +106,14 @@ class DqmTool {
 
   int _verbose;
   int _dryrun;
+  // Supplies stand-in primary keys while dry running.  These have to be
+  // positive: a negative key is this code's sentinel for "not set yet"
+  // (locateInterval rejects a sid below zero), so a negative stand-in would
+  // read as a missing key and stop the sequence it is meant to carry.  The
+  // base is far above any real key - the largest in the database is around
+  // half a million - so a dry-run key is still obvious wherever it surfaces.
+  static constexpr int fakeIdBase = 900000000;
+  int _fakeId;
   std::string _result;
 
   DbReader _reader;
