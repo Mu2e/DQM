@@ -151,7 +151,7 @@ int mu2e::DqmTool::commitValue(const std::string& sources,
   if (rc) return rc;
 
   command = "SET ROLE dqmWrite;";
-  rc = _sql.execute(command, result);
+  rc = execute(command, result);
   if (rc) return rc;
 
   rc = locateSource(source);
@@ -293,7 +293,7 @@ int mu2e::DqmTool::commitLimit(const std::string& sources,
   if (rc) return rc;
 
   command = "SET ROLE dqmWrite;";
-  rc = _sql.execute(command, result);
+  rc = execute(command, result);
   if (rc) return rc;
 
   rc = locateSource(source);
@@ -415,7 +415,7 @@ int mu2e::DqmTool::commitAlarm(const std::string& algos,
   if (rc) return rc;
 
   command = "SET ROLE dqmWrite;";
-  rc = _sql.execute(command, result);
+  rc = execute(command, result);
   if (rc) return rc;
 
   // Level and hull span come from the causes' own intervals, so they
@@ -431,7 +431,7 @@ int mu2e::DqmTool::commitAlarm(const std::string& algos,
   // DbSql::execute disconnects on those, aborting the transaction, so
   // the early returns cannot leave a half-written episode.
   command = "BEGIN;";
-  rc = _sql.execute(command, result);
+  rc = execute(command, result);
   if (rc) return rc;
 
   rc = matchAlarm(alarm);
@@ -451,7 +451,7 @@ int mu2e::DqmTool::commitAlarm(const std::string& algos,
   }
 
   command = "COMMIT;";
-  rc = _sql.execute(command, result);
+  rc = execute(command, result);
   if (rc) return rc;
 
   rc = _sql.disconnect();
@@ -489,7 +489,7 @@ int mu2e::DqmTool::alarmStatus(const std::string& aids,
   if (rc) return rc;
 
   command = "SET ROLE dqmWrite;";
-  rc = _sql.execute(command, result);
+  rc = execute(command, result);
   if (rc) return rc;
 
   // retired and deleted are terminal, so they close the episode too: a
@@ -506,7 +506,7 @@ int mu2e::DqmTool::alarmStatus(const std::string& aids,
   if (terminal) command += ", open=false";
   command += " WHERE aid=" + aids + " RETURNING aid;";
 
-  rc = _sql.execute(command, result);
+  rc = execute(command, result);
   if (rc) return rc;
 
   if (result.empty()) {
@@ -521,6 +521,68 @@ int mu2e::DqmTool::alarmStatus(const std::string& aids,
 
   rc = _sql.disconnect();
   if (rc) return rc;
+
+  return 0;
+}
+
+//***********************************************************
+
+// Statements that only read are safe in a dry run and must still run: the
+// point of the exercise is to report what a real commit would do against the
+// database as it actually is, and that needs the real lookups.  Everything
+// else is suppressed.
+bool mu2e::DqmTool::isWrite(const std::string& command) {
+  // Compare on the first keyword, upper-cased, since the statements here are
+  // written in both cases.
+  std::size_t b = command.find_first_not_of(" \t\n");
+  if (b == std::string::npos) return false;
+  std::size_t e = command.find_first_of(" \t\n", b);
+  std::string word = command.substr(b, e == std::string::npos ? e : e - b);
+  for (auto& c : word) c = std::toupper(c);
+
+  return word == "INSERT" || word == "UPDATE" || word == "DELETE";
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::execute(const std::string& command, std::string& result) {
+  if (!_dryrun) return _sql.execute(command, result);
+
+  // Session and transaction control is skipped rather than printed.  SET ROLE
+  // dqmWrite in particular would fail for an account without write access,
+  // and being able to dry run without write access is most of the point.
+  std::size_t b = command.find_first_not_of(" \t\n");
+  if (b != std::string::npos) {
+    std::string head = command.substr(b, 9);
+    for (auto& c : head) c = std::toupper(c);
+    if (head.rfind("SET ROLE", 0) == 0 || head.rfind("BEGIN", 0) == 0 ||
+        head.rfind("COMMIT", 0) == 0 || head.rfind("ROLLBACK", 0) == 0) {
+      result.clear();
+      return 0;
+    }
+  }
+
+  if (!isWrite(command)) return _sql.execute(command, result);
+
+  std::cout << "DRYRUN would execute: " << command << std::endl;
+
+  // Callers read the RETURNING value, either as a new primary key to use in
+  // the next statement or as proof that a row matched.  A dry run has
+  // neither, so hand back a stand-in from well above the real key range: it
+  // keeps the sequence running to the end, and stays recognisable if it
+  // surfaces in a printed statement.
+  //
+  // One consequence worth stating: a check that depends on a write matching a
+  // row - "no alarm with that aid" - cannot fail here, because no row was
+  // looked for.  Dry run reports what would be attempted, not that it would
+  // succeed.
+  if (command.find("RETURNING") != std::string::npos ||
+      command.find("returning") != std::string::npos) {
+    _fakeId++;
+    result = std::to_string(_fakeId);
+  } else {
+    result.clear();
+  }
 
   return 0;
 }
@@ -802,7 +864,7 @@ int mu2e::DqmTool::locateSource(DqmSource& source) {
             "' and stream='" + source.stream() + "' and aggregation='" +
             source.aggregation() + "' and version='" + source.version() + "';";
 
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   if (result.empty()) {
@@ -813,7 +875,7 @@ int mu2e::DqmTool::locateSource(DqmSource& source) {
         source.process() + "','" + source.stream() + "','" +
         source.aggregation() + "','" + source.version() + "') RETURNING sid;";
 
-    rc = _sql.execute(command, result);
+    rc = execute(command, result);
     if (rc) return rc;
   }
 
@@ -875,7 +937,7 @@ int mu2e::DqmTool::locateInterval(DqmInterval& interval) {
       " and end_subrun=" + std::to_string(interval.iov().endSubrun()) +
       " and start_time='" + interval.startTime() + "'" + " and end_time='" +
       interval.endTime() + "';";
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   if (result.empty()) {
@@ -890,7 +952,7 @@ int mu2e::DqmTool::locateInterval(DqmInterval& interval) {
         std::to_string(interval.iov().endRun()) + "," +
         std::to_string(interval.iov().endSubrun()) + ",'" +
         interval.startTime() + "','" + interval.endTime() + "') RETURNING iid;";
-    rc = _sql.execute(command, result);
+    rc = execute(command, result);
     if (rc) return rc;
   }
 
@@ -937,7 +999,7 @@ int mu2e::DqmTool::locateValue(DqmValue& value) {
   command = "select vid from dqm.values where groupx='" + value.group() +
             "' and subgroup='" + value.subgroup() + "' and namex='" +
             value.name() + "';";
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   if (result.empty()) {
@@ -945,7 +1007,7 @@ int mu2e::DqmTool::locateValue(DqmValue& value) {
         "INSERT INTO dqm.values (groupx,subgroup,namex)  VALUES ('" +
         value.group() + "','" + value.subgroup() + "','" + value.name() +
         "') RETURNING vid;";
-    rc = _sql.execute(command, result);
+    rc = execute(command, result);
     if (rc) return rc;
   }
 
@@ -978,14 +1040,14 @@ int mu2e::DqmTool::locateFile(DqmFile& file) {
             std::to_string(file.sid()) +
             " and iid=" + std::to_string(file.iid()) + " and filename=" + name +
             ";";
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   if (result.empty()) {
     command = "INSERT INTO dqm.files (sid,iid,filename)  VALUES (" +
               std::to_string(file.sid()) + "," + std::to_string(file.iid()) +
               "," + name + ") RETURNING fid;";
-    rc = _sql.execute(command, result);
+    rc = execute(command, result);
     if (rc) return rc;
   }
 
@@ -1008,7 +1070,7 @@ int mu2e::DqmTool::insertNumber(DqmNumber& number) {
       number.sigmaStr() + "'," + number.codeStr() + ") RETURNING nid;";
 
   std::string result;
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   int nid = std::stoi(result);
@@ -1033,7 +1095,7 @@ int mu2e::DqmTool::insertLimit(DqmLimit& limit) {
     limit.sigmaStr() + "'," + limit.alarmcodeStr() + ") RETURNING lid;";
 
   std::string result;
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   int lid = std::stoi(result);
@@ -1084,7 +1146,7 @@ int mu2e::DqmTool::spanFromCauses(DqmAlarm& alarm,
       list + ");";
 
   std::string result;
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   StringVec sv = splitString(result, ",");
@@ -1144,7 +1206,7 @@ int mu2e::DqmTool::matchAlarm(DqmAlarm& alarm) {
       " order by mtime desc limit 1;";
 
   std::string result;
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   if (!result.empty()) {
@@ -1175,7 +1237,7 @@ int mu2e::DqmTool::extendAlarm(const DqmAlarm& alarm) {
       std::to_string(alarm.aid()) + " RETURNING aid;";
 
   std::string result;
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   if (result.empty()) {
@@ -1201,7 +1263,7 @@ int mu2e::DqmTool::insertAlarm(DqmAlarm& alarm) {
       " and sid=" + std::to_string(alarm.sid()) + " and open;";
 
   std::string result;
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   // ctime, mtime, open, status and status_time take their defaults
@@ -1219,7 +1281,7 @@ int mu2e::DqmTool::insertAlarm(DqmAlarm& alarm) {
       sqlOrNull(alarm.startTime()) + "," + sqlOrNull(alarm.endTime()) + "," +
       sqlOrNull(alarm.note()) + ") RETURNING aid;";
 
-  rc = _sql.execute(command, result);
+  rc = execute(command, result);
   if (rc) return rc;
 
   int aid = std::stoi(result);
@@ -1249,7 +1311,7 @@ int mu2e::DqmTool::insertCause(DqmCause& cause, int aid) {
                         ";";
 
   std::string result;
-  int rc = _sql.execute(command, result);
+  int rc = execute(command, result);
   if (rc) return rc;
 
   if (result.empty()) {
@@ -1258,7 +1320,7 @@ int mu2e::DqmTool::insertCause(DqmCause& cause, int aid) {
         std::to_string(aid) + "," + std::to_string(cause.iid()) + "," +
         (cause.global() ? std::string("NULL") : std::to_string(cause.vid())) +
         "," + std::to_string(cause.level()) + ") RETURNING cid;";
-    rc = _sql.execute(command, result);
+    rc = execute(command, result);
     if (rc) return rc;
   }
 

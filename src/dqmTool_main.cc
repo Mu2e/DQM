@@ -1,6 +1,7 @@
 #include "DQM/inc/DqmTool.hh"
 #include "Offline/GeneralUtilities/inc/ParseCLI.hh"
 #include <algorithm>
+#include <exception>
 #include <iostream>
 #include <iterator>
 #include <string>
@@ -10,12 +11,16 @@ typedef std::vector<std::string> StrVec;
 
 
 // *********************************************************
-int main(int argc, char** argv) {
+static int dqmToolMain(int argc, char** argv) {
 
   mu2e::ParseCLI pcli("read and write to the DQM database");
   pcli.addSubcommand("", "");
   pcli.addSwitch("", "verbose", "v", "verbose", false, "increase verbosity", "",
                  true);
+  pcli.addSwitch("", "dryrun", "n", "dryrun", false,
+                 "print the statements that would change the database\n"
+                 "       instead of running them; lookups still run, so the\n"
+                 "       report reflects the database as it is");
   pcli.addSubcommand("print-sources", "list all sources of metrics");
   pcli.addSwitch("print-sources", "heading", "d", "heading", false,
                  "also print a header", "");
@@ -155,6 +160,7 @@ int main(int argc, char** argv) {
 
   mu2e::DqmTool tool;
   tool.setVerbose(pcli.getCount("", "verbose"));
+  tool.setDryrun(pcli.getBool("", "dryrun"));
   tool.init();
 
   if (pcli.subcommand() == "print-sources") {
@@ -224,4 +230,30 @@ int main(int argc, char** argv) {
 
   std::cout << tool.getResult();
   return 0;
+}
+
+// *********************************************************
+
+// The Dqm* value classes report malformed input by throwing
+// std::invalid_argument - a --source that is not four csv fields, a level
+// outside 0-3 - and DbSql reports a failed connection by throwing
+// cet::exception.  Nothing caught either, so a typo in an argument or an
+// expired Kerberos ticket came out as terminate(): an abort, a message from
+// the runtime rather than from us, and a status of 134 that says only "it
+// died".  One handler turns all of them into a line on stderr and a status of
+// 1, which is what a caller needs to tell bad input from a real failure -
+// a driver deciding whether to retry most of all, since retrying bad input
+// never succeeds.
+int main(int argc, char** argv) {
+  try {
+    return dqmToolMain(argc, argv);
+  } catch (std::exception const& e) {
+    // cet::exception derives from std::exception, so this covers the
+    // database errors as well as the argument ones.
+    std::cerr << "ERROR - " << e.what() << std::endl;
+    return 1;
+  } catch (...) {
+    std::cerr << "ERROR - unrecognized exception" << std::endl;
+    return 1;
+  }
 }
