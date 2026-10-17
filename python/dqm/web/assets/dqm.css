@@ -1,0 +1,46 @@
+/* Styling for the DQM application.
+ *
+ * Dash serves everything in this directory automatically (it is the assets
+ * folder for dqm/web/app.py). The files must also be listed as package data
+ * in pyproject.toml, or they are present in a checkout and missing from an
+ * installed wheel -- a difference that only shows up after deployment.
+ */
+
+/* Hide the spinner arrows on number inputs.
+ *
+ * Defensive only. The days field used to be type="number" and these rules did
+ * not reliably remove its arrows across browsers -- and a spinner click
+ * combined with debounce made Dash emit None, blanking the field. That field
+ * is now type="text" with inputMode="numeric", which has no arrows to begin
+ * with. These rules remain so a future number input does not reintroduce the
+ * problem, but nothing currently depends on them.
+ */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;  /* Firefox */
+  appearance: textfield;
+}
+
+/* Match the dropdowns beside it, which draw their own border and padding. */
+input[type="number"],
+input[type="text"] {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+input[type="number"]:focus,
+input[type="text"]:focus {
+  outline: none;
+  border-color: #1f77b4;
+  box-shadow: 0 0 0 2px rgba(31, 119, 180, 0.15);
+}
