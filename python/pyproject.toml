@@ -67,6 +67,11 @@ hist = [
 fit = [
   "lmfit>=1.2"
 ]
+# The driver and evaluators: YAML config, and the reader for metrics.
+evaluate = [
+  "mu2e-dqm",
+  "PyYAML>=6.0"
+]
 # Finding files through metacat, and turning a Mu2e file name into a path.
 # mu2e-mdh is requested WITHOUT its [full] extra: that extra pins rucio and
 # data-dispatcher, a heavy install this does not need. Everything used here is
@@ -91,7 +96,7 @@ web = [
 ]
 # Everything, for a development checkout.
 all = [
-  "mu2e-dqm[hist,fit,plot,catalog,web]"
+  "mu2e-dqm[hist,fit,plot,catalog,evaluate,web]"
 ]
 
 [project.urls]
@@ -100,6 +105,7 @@ Homepage = "https://github.com/Mu2e/DQM"
 [project.scripts]
 dqm-reader = "dqm.reader.cli:main"
 dqm-web = "dqm.web.cli:main"
+dqm-driver = "dqm.evaluate.cli:main"
 
 # This directory also holds standalone analysis and plotting scripts that are
 # run from a checkout and are not part of the installable package. Naming the

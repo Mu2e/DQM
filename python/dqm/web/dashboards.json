@@ -41,7 +41,9 @@
         {"source": "valNightly/reco/day/0", "metric": "ops/stats/CPU"},
         {"source": "valNightly/reco/day/0", "metric": "ops/stats/MEM"},
         {"source": "valNightly/ceSimReco/day/0", "metric": "ops/stats/CPU"},
-        {"source": "valNightly/ceSimReco/day/0", "metric": "ops/stats/MEM"}
+        {"source": "valNightly/ceSimReco/day/0", "metric": "ops/stats/MEM"},
+        {"source": "valNightly/reco/day/0", "metric": "ops/stats/DBTIME"},
+        {"source": "valNightly/build/day/0", "metric": "ops/stats/time"}
       ]
     },
 

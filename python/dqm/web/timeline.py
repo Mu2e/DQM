@@ -37,9 +37,9 @@ from dash import ALL, Input, Output, State, dcc, html
 from dqm.plot import PlotSpec, to_plotly_grid
 from dqm.plot.spec import PALETTE
 from dqm.schema import CODE_VALUES
-from dqm.web.common import (ID, card, error_box, has_run_structure, reader,
-                            row, runs_for_metric, source_reports,
-                            values_for_source)
+from dqm.web.common import (ID, REFRESH_MS, card, drawn_stamp, error_box,
+                            has_run_structure, reader, row, runs_for_metric,
+                            source_reports, values_for_source)
 from dqm.web.dashboards import load_dashboards, resolve_series
 
 LOGGER = logging.getLogger("dqm.web.timeline")
@@ -73,13 +73,6 @@ MODES = {
     "run": {"label": "Runs", "default": DEFAULT_RUNS, "unit": "runs",
             "axis": "run", "blank": "all runs"},
 }
-
-# How often an auto-refresh tick fires, in milliseconds.  Ten minutes: the
-# nightly sources publish once a day and the per-file CRV sources once a
-# subrun, so anything faster is mostly queries that return what the screen
-# already shows.  The catalogue caches expire in five minutes, so a tick
-# always sees a fresh metric list too.
-REFRESH_MS = 10 * 60 * 1000
 
 # Read once at import, so a hand-edited file is picked up on restart rather
 # than on every interaction. A missing or malformed file yields an empty list
@@ -717,12 +710,7 @@ def register(app) -> None:
                 # a working auto-refresh from a stalled one, since a refresh
                 # that returns the same data looks exactly like no refresh.
                 # UTC, to match the time axis.
-                html.Span(
-                    "  |  drawn "
-                    + datetime.datetime.now(datetime.timezone.utc).strftime(
-                        "%H:%M:%S UTC"),
-                    style={"color": "#888"},
-                ),
+                html.Span("  |  " + drawn_stamp(), style={"color": "#888"}),
             ]
         )
 

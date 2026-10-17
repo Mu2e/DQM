@@ -17,7 +17,8 @@ from typing import Any, List
 from dash import Input, Output, dash_table, dcc, html
 
 from dqm.schema import ALARM_STATUSES, TERMINAL_ALARM_STATUSES
-from dqm.web.common import ID, card, error_box, kv_table, reader, row
+from dqm.web.common import (ID, REFRESH_MS, card, drawn_stamp,
+                            error_box, reader, row)
 
 LOGGER = logging.getLogger("dqm.web.alarms")
 
@@ -59,9 +60,30 @@ def layout() -> Any:
                             ],
                             style={"flex": "0 0 220px"},
                         ),
+                        html.Div(
+                            [
+                                html.Label("Refresh", style={"fontWeight": 600}),
+                                # Its own control, not another entry in
+                                # "opts": that one filters what is shown, and
+                                # a filter and a refresh policy should not
+                                # share a widget.
+                                dcc.Checklist(
+                                    id=ID(PREFIX, "auto"),
+                                    options=[{"label": " auto (10 min)",
+                                              "value": "auto"}],
+                                    value=[],
+                                    inline=True,
+                                ),
+                            ],
+                            style={"flex": "0 0 160px"},
+                        ),
                     ]
                 )
             ),
+            # Starts disabled; the callback below arms it. A disabled
+            # Interval never fires, so an idle page costs nothing.
+            dcc.Interval(id=ID(PREFIX, "tick"), interval=REFRESH_MS,
+                         disabled=True, n_intervals=0),
             html.Div(id=ID(PREFIX, "status-line"), style={"margin": "0.5rem 0"}),
             dcc.Loading(
                 html.Div(id=ID(PREFIX, "table")),
@@ -76,12 +98,23 @@ def layout() -> Any:
 
 def register(app) -> None:
     @app.callback(
+        Output(ID(PREFIX, "tick"), "disabled"),
+        Input(ID(PREFIX, "auto"), "value"),
+    )
+    def _arm_refresh(auto):
+        """Run the timer only while the box is ticked."""
+        return "auto" not in (auto or [])
+
+    @app.callback(
         Output(ID(PREFIX, "table"), "children"),
         Output(ID(PREFIX, "status-line"), "children"),
         Input(ID(PREFIX, "status"), "value"),
         Input(ID(PREFIX, "opts"), "value"),
+        # Only to make the timer reload: its value is never read. The alarms
+        # query is not cached, so re-running this callback is the refresh.
+        Input(ID(PREFIX, "tick"), "n_intervals"),
     )
-    def _load(status, opts):
+    def _load(status, opts, _tick):
         opts = opts or []
         try:
             r = reader()
@@ -100,7 +133,11 @@ def register(app) -> None:
             return "", error_box(f"{type(exc).__name__}: {exc}")
 
         if df.empty:
-            return "", error_box("No alarm episodes match.", kind="info")
+            return "", html.Div([
+                error_box("No alarm episodes match.", kind="info"),
+                html.Span(drawn_stamp(), style={"color": "#888",
+                                                "fontSize": "0.8rem"}),
+            ])
 
         # Decorate with the source each episode concerns -- an sid alone is
         # not something anyone can read.
@@ -143,8 +180,11 @@ def register(app) -> None:
                 for s in TERMINAL_ALARM_STATUSES
             ],
         )
-        line = html.Span(f"{len(df)} episode(s); select one to see its causes",
-                         style={"color": "#555"})
+        line = html.Div([
+            html.Span(f"{len(df)} episode(s); select one to see its causes",
+                      style={"color": "#555"}),
+            html.Span("  |  " + drawn_stamp(), style={"color": "#888"}),
+        ])
         return table, line
 
     @app.callback(

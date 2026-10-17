@@ -13,8 +13,27 @@ LOGGER = logging.getLogger("dqm.web.common")
 
 __all__ = ["ID", "reader", "card", "row", "error_box", "kv_table",
            "values_for_source", "runs_for_source", "runs_for_metric",
-           "has_run_structure",
+           "has_run_structure", "REFRESH_MS", "drawn_stamp",
            "source_reports", "clear_caches"]
+
+# How often an auto-refresh tick fires, in milliseconds. Shared by the tabs
+# that offer one, so they do not drift apart. Ten minutes suits what actually
+# changes: the nightly sources publish once a day, the per-file CRV sources
+# once a subrun, and alarms appear when a driver runs. The catalogue caches
+# expire in five minutes, so a tick always sees a fresh metric list too.
+REFRESH_MS = 10 * 60 * 1000
+
+
+def drawn_stamp() -> str:
+    """"drawn HH:MM:SS UTC", for the end of a status line.
+
+    Without it there is no way to tell a working auto-refresh from a stalled
+    one: a refresh that returns the same rows looks exactly like no refresh.
+    UTC, to match the timestamps in the data.
+    """
+    import datetime as dt
+
+    return "drawn " + dt.datetime.now(dt.timezone.utc).strftime("%H:%M:%S UTC")
 
 _READER: Optional[DqmReader] = None
 
