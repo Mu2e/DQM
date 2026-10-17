@@ -105,6 +105,19 @@ ALARM_STATUSES: Tuple[str, ...] = (
 )
 
 # The database default for a newly opened episode.
+# An alarm episode's severity, and a cause's. Distinct from AlarmCode below,
+# which is the alarmcode on a dqm.limits row (what to do about a threshold);
+# this is how bad a finding was. They are both 0-3 and they are not the same
+# vocabulary, which is exactly why both belong here rather than being spelled
+# out wherever they happen to be needed.
+ALARM_LEVEL_NAMES: Tuple[str, ...] = ("message", "warn", "alarm", "severe")
+ALARM_LEVELS: Dict[int, str] = dict(enumerate(ALARM_LEVEL_NAMES))
+
+
+def valid_alarm_level(level: int) -> bool:
+    return level in ALARM_LEVELS
+
+
 DEFAULT_ALARM_STATUS = "active"
 
 # Setting either of these also closes the episode, so a later matching finding
