@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
 from dqm.errors import DqmConfigError, DqmError
+from dqm.schema import ALARM_LEVEL_NAMES
 
 LOGGER = logging.getLogger("dqm.evaluate")
 
@@ -57,9 +58,12 @@ class DqmEvaluateError(DqmError):
     """An evaluator or its configuration is wrong."""
 
 
-# 0,1,2,3 = message, warn, alarm, severe.  Spelled out so an algorithm can say
-# LEVELS["warn"] rather than a bare 1 that the reader has to look up.
-LEVEL_NAMES: Tuple[str, ...] = ("message", "warn", "alarm", "severe")
+# 0,1,2,3 = message, warn, alarm, severe.  From dqm.schema, which is where the
+# shared contract lives: the display, the MCP and the evaluators all have to
+# agree on what a level means, and a second copy here would be the obvious
+# place for them to drift apart.  Named so an algorithm can say LEVELS["warn"]
+# rather than a bare 1 that the reader has to look up.
+LEVEL_NAMES: Tuple[str, ...] = ALARM_LEVEL_NAMES
 LEVELS: Dict[str, int] = {name: i for i, name in enumerate(LEVEL_NAMES)}
 
 
