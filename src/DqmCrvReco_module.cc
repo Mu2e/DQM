@@ -13,6 +13,7 @@
 #include "fhiclcpp/types/Atom.h"
 #include "fhiclcpp/types/Table.h"
 
+#include "DQM/inc/DqmCrvConfiguration.hh"
 #include "Offline/CRVConditions/inc/CRVStatus.hh"
 #include "Offline/CosmicRayShieldGeom/inc/CosmicRayShield.hh"
 #include "Offline/CRVDQM/inc/CRVRecoDQM.hh"
@@ -39,6 +40,10 @@ class DqmCrvReco : public art::EDAnalyzer {
         Name("pulseTag"),
         Comment("CrvRecoPulse collection, for the per-pulse plots; the clusters' own pulses are "
                 "reached through their Ptrs")};
+    fhicl::Atom<std::string> configuration{
+        Name("configuration"),
+        Comment("CRVDQMRun1 configuration to book (run1a or extracted); must match the geometry"),
+        "run1a"};
     fhicl::Table<DQMClientFhicl> dqm{
         Name("dqm"), Comment("CRVRecoDQM configuration; see Offline/CRVDQM/fcl/prolog.fcl")};
     fhicl::Atom<std::string> catalogueFile{
@@ -67,7 +72,8 @@ class DqmCrvReco : public art::EDAnalyzer {
 
 DqmCrvReco::DqmCrvReco(const Parameters& conf) :
     art::EDAnalyzer(conf), _clusterTag(conf().clusterTag()), _pulseTag(conf().pulseTag()),
-    _catalogueFile(conf().catalogueFile()), _dqm(toConfig(conf().dqm().hists())) {}
+    _catalogueFile(conf().catalogueFile()),
+    _dqm(toConfig(conf().dqm().hists()), crvDqmConfiguration(conf().configuration())) {}
 
 void DqmCrvReco::beginJob() {
   art::ServiceHandle<art::TFileService> tfs;
@@ -86,6 +92,7 @@ void DqmCrvReco::analyze(const art::Event& event) {
     _layoutRun = event.run();
     GeomHandle<CosmicRayShield> crs;
     const int configuration = CRVDQMLayout::configuration(*crs);
+    checkCrvDqmConfiguration(_dqm.configuration(), configuration);
     _dqm.SetConfiguration(configuration, CRVDQMLayout::channelToSector(
                                              *crs, configuration, &_sipmStatus.get(event.id())));
   }

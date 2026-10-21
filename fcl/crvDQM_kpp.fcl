@@ -44,23 +44,27 @@ physics : {
     CrvCoincidenceClusterFinder : @local::CrvCoincidenceClusterFinder
   }
   analyzers : {
+    # configuration "extracted" books only the KPP readout (2 ROCs, links 0-3)
     crvDigiDQM : {
-      module_type : DqmCrvDigi
-      digiTag     : "CrvDigi"
-      statusTag   : "CrvDigi"
-      dqm         : @local::CRVDQM.Digi
+      module_type   : DqmCrvDigi
+      digiTag       : "CrvDigi"
+      statusTag     : "CrvDigi"
+      configuration : "extracted"
+      dqm           : @local::CRVDQM.Digi
     }
     crvStatusDQM : {
-      module_type : DqmCrvStatus
-      statusTag   : "CrvDigi"
-      daqErrorTag : "CrvDigi"
-      dqm         : @local::CRVDQM.Status
+      module_type   : DqmCrvStatus
+      statusTag     : "CrvDigi"
+      daqErrorTag   : "CrvDigi"
+      configuration : "extracted"
+      dqm           : @local::CRVDQM.Status
     }
     crvRecoDQM : {
-      module_type : DqmCrvReco
-      clusterTag  : "CrvCoincidenceClusterFinder"
-      pulseTag    : "CrvRecoPulses"
-      dqm         : @local::CRVDQM.Reco
+      module_type   : DqmCrvReco
+      clusterTag    : "CrvCoincidenceClusterFinder"
+      pulseTag      : "CrvRecoPulses"
+      configuration : "extracted"
+      dqm           : @local::CRVDQM.Reco
     }
   }
   RecoPath      : [ EWMProducer, CrvDigi, CrvRecoPulses, CrvCoincidenceClusterFinder ]
