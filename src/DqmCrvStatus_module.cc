@@ -1,6 +1,7 @@
 //
 // Offline CRV ROC-status DQM: fills mu2e::CRVStatusDQM (Offline/CRVDQM)
-// from CrvStatus and CrvDAQerror. Needs no geometry.
+// from CrvStatus and CrvDAQerror. Needs no geometry; the `configuration`
+// parameter sizes the per-link histograms.
 //
 
 #include "art/Framework/Core/EDAnalyzer.h"
@@ -12,6 +13,7 @@
 #include "fhiclcpp/types/Atom.h"
 #include "fhiclcpp/types/Table.h"
 
+#include "DQM/inc/DqmCrvConfiguration.hh"
 #include "Offline/CRVDQM/inc/CRVStatusDQM.hh"
 #include "Offline/DQMHelpers/inc/DQMHistSetConfig.hh"
 #include "Offline/RecoDataProducts/inc/CrvDAQerror.hh"
@@ -29,6 +31,9 @@ class DqmCrvStatus : public art::EDAnalyzer {
     using Comment = fhicl::Comment;
     fhicl::Atom<art::InputTag> statusTag{Name("statusTag"), Comment("CrvStatus collection")};
     fhicl::Atom<art::InputTag> daqErrorTag{Name("daqErrorTag"), Comment("CrvDAQerror collection")};
+    fhicl::Atom<std::string> configuration{
+        Name("configuration"),
+        Comment("CRVDQMRun1 configuration to book (run1a or extracted)"), "run1a"};
     fhicl::Table<DQMClientFhicl> dqm{
         Name("dqm"), Comment("CRVStatusDQM configuration; see Offline/CRVDQM/fcl/prolog.fcl")};
     fhicl::Atom<std::string> catalogueFile{
@@ -55,7 +60,8 @@ class DqmCrvStatus : public art::EDAnalyzer {
 
 DqmCrvStatus::DqmCrvStatus(const Parameters& conf) :
     art::EDAnalyzer(conf), _statusTag(conf().statusTag()), _daqErrorTag(conf().daqErrorTag()),
-    _catalogueFile(conf().catalogueFile()), _dqm(toConfig(conf().dqm().hists())) {}
+    _catalogueFile(conf().catalogueFile()),
+    _dqm(toConfig(conf().dqm().hists()), crvDqmConfiguration(conf().configuration())) {}
 
 void DqmCrvStatus::beginJob() {
   art::ServiceHandle<art::TFileService> tfs;
