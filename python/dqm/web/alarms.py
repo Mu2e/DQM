@@ -16,9 +16,10 @@ from typing import Any, List
 
 from dash import Input, Output, dash_table, dcc, html
 
-from dqm.schema import ALARM_STATUSES, TERMINAL_ALARM_STATUSES
-from dqm.web.common import (ID, REFRESH_MS, card, drawn_stamp,
-                            error_box, reader, row)
+from dqm.schema import (ALARM_LEVEL_NAMES as LEVEL_NAMES,
+                        ALARM_STATUSES, TERMINAL_ALARM_STATUSES)
+from dqm.web.common import (ID, REFRESH_MS, card, drawn_stamp, error_box,
+                            kv_table, reader, row)
 
 LOGGER = logging.getLogger("dqm.web.alarms")
 
@@ -94,6 +95,72 @@ def layout() -> Any:
             html.Div(id=ID(PREFIX, "causes"), style={"marginTop": "1rem"}),
         ]
     )
+
+
+def _cause_rows(aid: int):
+    """One (label, detail) pair per cause, with the ids decoded.
+
+    Returns None when the episode has no causes at all.
+
+    An iid and a vid say nothing on their own, so each is resolved: the vid to
+    its metric name, the iid to the run or date of its interval.  The same
+    decoding the MCP's get_alarm_causes does -- the page a person reads during
+    a shift should not be the less informative of the two.
+    """
+    from dqm.reader.transport import where_eq
+
+    r = reader()
+    causes = r.read_table("alarm_causes",
+                          clauses=[where_eq("aid", int(aid))], limit=None)
+    if causes.empty:
+        return None
+
+    names = {}
+    try:
+        vids = [int(v) for v in causes["vid"].dropna().unique()]
+        if vids:
+            vv = r.values(vid=vids, limit=None)
+            names = {
+                int(x.vid): f"{x.groupx}/{x.subgroup}/{x.namex}"
+                for x in vv.itertuples()
+            }
+    except Exception:
+        LOGGER.debug("could not decode vids for aid=%s", aid, exc_info=True)
+
+    where = {}
+    try:
+        iids = [int(i) for i in causes["iid"].dropna().unique()]
+        if iids:
+            iv = r.intervals(iid=iids, limit=None)
+            for x in iv.itertuples():
+                run = getattr(x, "start_run", None)
+                # Run 0 is this schema's "no run": a day-aggregation source
+                # stores it for every interval and keeps the real position in
+                # the timestamps.
+                if run is not None and run == run and int(run) != 0:
+                    sub = getattr(x, "start_subrun", None)
+                    where[int(x.iid)] = f"run {int(run)}:{int(sub or 0)}"
+                else:
+                    t = getattr(x, "start_time", None)
+                    where[int(x.iid)] = (f"{t:%Y-%m-%d}" if t is not None and t == t
+                                         else f"iid {int(x.iid)}")
+    except Exception:
+        LOGGER.debug("could not decode iids for aid=%s", aid, exc_info=True)
+
+    rows = []
+    for c in causes.itertuples():
+        iid = int(c.iid)
+        # A NULL vid is a global test -- about the interval as a whole rather
+        # than any single metric.  Guard against both spellings of missing:
+        # pandas gives <NA> for a nullable column and nan for a float one.
+        blank = c.vid is None or str(c.vid) in ("<NA>", "nan") or c.vid != c.vid
+        metric = "(global test)" if blank else names.get(int(c.vid),
+                                                         f"vid {int(c.vid)}")
+        label = where.get(iid, f"iid {iid}")
+        level = LEVEL_NAMES[int(c.level)] if int(c.level) in range(len(LEVEL_NAMES)) \
+            else str(c.level)
+        rows.append((label, f"{metric}   [{level}]"))
+    return rows
 
 
 def register(app) -> None:
@@ -193,27 +260,27 @@ def register(app) -> None:
         Input(ID(PREFIX, "dt"), "data"),
     )
     def _causes(selected, data):
+        """The evidence for the selected episode.
+
+        Everything after the selection check is inside one try.  It was not,
+        and a NameError in the rendering raised out of the callback -- which
+        Dash answers by leaving the output at its previous value.  The panel
+        was empty, so it stayed empty: no causes, no error box, no clue.  A
+        failure here has to be visible, because the alternative is a display
+        that looks like it works.
+        """
         if not selected or not data:
             return ""
-        aid = data[selected[0]]["aid"]
-        try:
-            from dqm.reader.transport import where_eq
 
-            r = reader()
-            causes = r.read_table("alarm_causes",
-                                  clauses=[where_eq("aid", int(aid))], limit=None)
+        try:
+            aid = data[selected[0]]["aid"]
+            rows = _cause_rows(int(aid))
         except Exception as exc:
+            LOGGER.exception("could not build the causes panel")
             return error_box(f"{type(exc).__name__}: {exc}")
 
-        if causes.empty:
+        if rows is None:
             return error_box(f"Episode {aid} has no recorded causes.", kind="warn")
-
-        rows = []
-        for c in causes.itertuples():
-            # A NULL vid is a global test -- one about the interval as a whole
-            # rather than about a single variable.
-            vid = "(global test)" if c.vid is None or str(c.vid) == "<NA>" else int(c.vid)
-            rows.append((f"iid {int(c.iid)}", f"vid {vid}   level {int(c.level)}"))
 
         return html.Div(
             [
