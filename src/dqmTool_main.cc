@@ -97,10 +97,13 @@ static int dqmToolMain(int argc, char** argv) {
       "runs for an interval\n       like \"1100:0-1101:999999\" (optional)");
   pcli.addSwitch(
       "commit-value", "start", "t", "start", true,
-      "start of an interval\n       like \"2022-01-01T14:00:00\" (optional)");
+      "start of an interval\n       like \"2022-01-01T14:00:00\", read in the "
+      "server's\n       timezone unless it carries one, as in \"...T14:00:00Z\"");
   pcli.addSwitch(
       "commit-value", "end", "e", "end", true,
-      "end of an interval\n       like \"2022-01-01T14:00:00\" (optional)");
+      "end of an interval\n       like \"2022-01-01T14:00:00\"\n"
+      "       omitting this does not leave the interval open ended, it\n"
+      "       copies --start; pass \"infinity\" for an open end");
   pcli.addSwitch("commit-value", "value", "v", "value", true,
                  "either a csv string like\n       "
                  "\"cal,disk0,meanE,20.0,0.1,0\"  = "
@@ -120,14 +123,20 @@ static int dqmToolMain(int argc, char** argv) {
       "runs for an interval\n       like \"1100:0-1101:999999\" (optional)");
   pcli.addSwitch(
       "commit-limit", "start", "t", "start", true,
-      "start of an interval\n       like \"2022-01-01T14:00:00\" (optional)");
+      "start of an interval\n       like \"2022-01-01T14:00:00\", read in the "
+      "server's\n       timezone unless it carries one, as in \"...T14:00:00Z\"");
   pcli.addSwitch(
       "commit-limit", "end", "e", "end", true,
-      "end of an interval\n       like \"2022-01-01T14:00:00\" (optional)");
+      "end of an interval\n       like \"2022-01-01T14:00:00\"\n"
+      "       omitting this does not leave the interval open ended, it\n"
+      "       copies --start; pass \"infinity\" for an open end, which is\n"
+      "       what a limit that applies from --start onwards needs");
   pcli.addSwitch(
       "commit-limit", "value", "v", "value", true,
-      "name of the metric, either\n       csv like \"cal,disk0,meanE\" = "
-      "group,subgroup,name\n       or VID");
+      "either a csv string like\n       "
+      "\"cal,disk0,meanE,10.0,30.0,2.5,0\"  = "
+      "group,subgroup,name,llimit,ulimit,sigma,alarmcode\n       or a filespec "
+      "of a text file containing csv strings");
 
   pcli.addSubcommand("commit-alarm", "commit an alarm finding");
   pcli.addSwitch("commit-alarm", "algo", "a", "algo", true,
