@@ -123,11 +123,27 @@ def _parse_series(request):
     return [(sid, vid)], ""
 
 
-def register_routes(server) -> None:
-    """Attach the export routes to a Flask server."""
+def register_routes(server, routes_pathname_prefix: str = "/") -> None:
+    """Attach the export routes to a Flask server.
+
+    `routes_pathname_prefix` must match what Dash was given, or the exports
+    end up somewhere the proxy does not forward.  Dash moves its own routes
+    under the prefix but knows nothing about these, so registering them at "/"
+    unconditionally left them reachable only at the server root -- fine when
+    the app is at a hostname root, broken behind a proxy serving it under a
+    path.
+
+    /healthz is deliberately NOT prefixed: it is for the proxy and for
+    systemd, which check the process directly rather than through the path the
+    browser uses, and keeping it at a fixed location means a health check does
+    not have to be reconfigured alongside the prefix.
+    """
+    prefix = routes_pathname_prefix or "/"
+    if not prefix.endswith("/"):
+        prefix += "/"
     from flask import Response, request
 
-    @server.route("/report/timeline.<fmt>")
+    @server.route(prefix + "report/timeline.<fmt>")
     def report_timeline(fmt):
         if fmt not in FORMATS:
             return Response(f"unsupported format {fmt!r}; use "
