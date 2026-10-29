@@ -255,9 +255,18 @@ class QEClient:
         # local offset that shifts across DST ("-05:00" in summer, "-06:00" in
         # winter), and a column of mixed offsets is left as opaque objects
         # rather than a comparable datetime64 column.
+        #
+        # format is required for the same reason.  Left to infer, pandas takes
+        # the format of the first value and coerces everything that does not
+        # match it to NaT.  QE renders a postgres infinity as
+        # "9999-12-31 23:59:59.999999+00:00", with microseconds, where an
+        # ordinary timestamp has none - so one infinity sorting first turns a
+        # whole column of good timestamps into NaT.  ISO8601 accepts both.
         for column in parse_dates:
             if column in df.columns:
-                df[column] = pd.to_datetime(df[column], utc=True, errors="coerce")
+                df[column] = pd.to_datetime(
+                    df[column], utc=True, errors="coerce", format="ISO8601"
+                )
         return df
 
     @staticmethod
