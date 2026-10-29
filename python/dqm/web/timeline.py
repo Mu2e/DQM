@@ -363,6 +363,24 @@ def layout() -> Any:
 
 
 
+def _report_href(ext: str, qs: str) -> str:
+    """A link to a static export, as the browser must ask for it.
+
+    Dash's get_relative_path prepends requests_pathname_prefix -- the path the
+    browser uses, which behind a proxy is not the path this process serves on.
+    A bare "/report/..." was correct only when the app sat at a hostname root;
+    under a proxy path it pointed outside the app and 404ed.
+    """
+    try:
+        import dash
+
+        return dash.get_relative_path(f"/report/timeline.{ext}") + qs
+    except Exception:
+        # get_relative_path needs an app context; fall back to the bare path,
+        # which is right whenever there is no prefix.
+        return f"/report/timeline.{ext}{qs}"
+
+
 def register(app) -> None:
     @app.callback(
         Output({"type": PREFIX + "vid", "index": ALL}, "options"),
@@ -724,7 +742,7 @@ def register(app) -> None:
             [
                 html.Span("report image: ", style={"color": "#555"}),
                 *[
-                    html.A(ext.upper(), href=f"/report/timeline.{ext}{qs}",
+                    html.A(ext.upper(), href=_report_href(ext, qs),
                            target="_blank", style={"marginRight": "0.75rem"})
                     for ext in ("png", "pdf", "svg")
                 ],

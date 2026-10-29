@@ -25,9 +25,10 @@ an id called "graph" would silently collide.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional
 
-from dqm.errors import DqmDependencyError
+from dqm.errors import DqmConfigError, DqmDependencyError
 
 try:
     import dash
@@ -95,8 +96,39 @@ def create_app(
     the usual arrangement and the usual source of a blank page with 404s on
     every asset.
     """
+    # Fall back to Dash's own environment variables, because a WSGI server
+    # imports `server` from this module and never sees the CLI's flags:
+    #
+    #   DASH_REQUESTS_PATHNAME_PREFIX=/computing/ops/dqmapp/   browser asks for
+    #   DASH_ROUTES_PATHNAME_PREFIX=/computing/ops/dqmapp/     served on
+    #
+    # Dash reads these itself, so Dash's own routes move whether or not this
+    # function looks at them.  We read them too because the export routes in
+    # dqm.web.routes are plain Flask routes that Dash knows nothing about: left
+    # at "/" while Dash moved to the prefix, the page's export links pointed at
+    # the prefixed path and got the catch-all HTML instead of a PNG.  Reading
+    # the same variables Dash does is what keeps the two halves agreeing.
+    if requests_pathname_prefix is None:
+        requests_pathname_prefix = (
+            os.environ.get("DASH_REQUESTS_PATHNAME_PREFIX") or None)
+    if routes_pathname_prefix is None:
+        routes_pathname_prefix = (os.environ.get("DASH_ROUTES_PATHNAME_PREFIX")
+                                  or requests_pathname_prefix)
+
     kwargs = {"suppress_callback_exceptions": True, "title": title}
     if requests_pathname_prefix:
+        # Dash requires both to start and end with "/", and requires
+        # requests_ to end with routes_.  Catch it here with a message that
+        # names the variable, rather than letting Dash raise about an argument
+        # the operator never passed.
+        for name, value in (
+                ("DASH_REQUESTS_PATHNAME_PREFIX", requests_pathname_prefix),
+                ("DASH_ROUTES_PATHNAME_PREFIX", routes_pathname_prefix)):
+            if value and not (value.startswith("/") and value.endswith("/")):
+                raise DqmConfigError(
+                    f"{name}={value!r} must start and end with '/', "
+                    f"e.g. '/computing/ops/dqmapp/'"
+                )
         kwargs["requests_pathname_prefix"] = requests_pathname_prefix
     if routes_pathname_prefix:
         kwargs["routes_pathname_prefix"] = routes_pathname_prefix
@@ -184,7 +216,9 @@ def create_app(
 
     from dqm.web.routes import register_routes
 
-    register_routes(application.server)
+    # The exports must live where Dash lives, or a proxy serving the app
+    # under a path will not forward them.
+    register_routes(application.server, routes_pathname_prefix or "/")
 
     return application
 

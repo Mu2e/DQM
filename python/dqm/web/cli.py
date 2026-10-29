@@ -61,8 +61,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
 
     if args.check:
+        # Report what the app resolved, not just what was typed: under
+        # gunicorn the prefix comes from the environment, and a --check that
+        # echoed only the flags would say "prefix=None" for a correctly
+        # configured deployment.
+        import os as _os
+
+        resolved = (args.prefix
+                    or _os.environ.get("DASH_REQUESTS_PATHNAME_PREFIX") or "/")
+        routes = (args.routes_prefix
+                  or _os.environ.get("DASH_ROUTES_PATHNAME_PREFIX") or resolved)
         print(f"OK: dqm-web built (mu2e-dqm {__version__}, "
-              f"host={args.host} port={args.port} prefix={args.prefix})")
+              f"browser path={resolved} served path={routes})")
         return 0
 
     url_path = args.prefix or "/"
