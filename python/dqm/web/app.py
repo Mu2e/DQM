@@ -82,6 +82,30 @@ def _header() -> Any:
     )
 
 
+def _ensure_logging() -> None:
+    """Give the dqm logger somewhere to write under a WSGI server.
+
+    `dqm-web` calls its own setup_logging, but gunicorn imports `server` from
+    this module and never runs the CLI -- so nothing configures the `dqm`
+    logger and every LOGGER.info vanishes.  That silence is a problem for
+    anything an operator needs to confirm, the access filter most of all:
+    "is it on, and what is it refusing?" has to be answerable from the log.
+
+    stderr, because gunicorn captures that into its error log and systemd
+    journals it from there.  Skipped entirely if a handler already exists, so
+    the CLI's configuration is never duplicated.
+    """
+    root = logging.getLogger("dqm")
+    if root.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"))
+    root.addHandler(handler)
+    root.setLevel(os.environ.get("DQM_WEB_LOG_LEVEL", "INFO").upper())
+
+
 def create_app(
     requests_pathname_prefix: Optional[str] = None,
     routes_pathname_prefix: Optional[str] = None,
@@ -114,6 +138,8 @@ def create_app(
     if routes_pathname_prefix is None:
         routes_pathname_prefix = (os.environ.get("DASH_ROUTES_PATHNAME_PREFIX")
                                   or requests_pathname_prefix)
+
+    _ensure_logging()
 
     kwargs = {"suppress_callback_exceptions": True, "title": title}
     if requests_pathname_prefix:
@@ -219,6 +245,12 @@ def create_app(
     # The exports must live where Dash lives, or a proxy serving the app
     # under a path will not forward them.
     register_routes(application.server, routes_pathname_prefix or "/")
+
+    # Before anything else gets to see a request.  Reads DQM_WEB_ALLOW; with
+    # that unset nothing is filtered.  See dqm.web.access.
+    from dqm.web.access import install_access_filter
+
+    install_access_filter(application.server)
 
     return application
 
