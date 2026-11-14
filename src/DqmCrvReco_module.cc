@@ -73,7 +73,10 @@ class DqmCrvReco : public art::EDAnalyzer {
 DqmCrvReco::DqmCrvReco(const Parameters& conf) :
     art::EDAnalyzer(conf), _clusterTag(conf().clusterTag()), _pulseTag(conf().pulseTag()),
     _catalogueFile(conf().catalogueFile()),
-    _dqm(toConfig(conf().dqm().hists()), crvDqmConfiguration(conf().configuration())) {}
+    _dqm(toConfig(conf().dqm().hists()), crvDqmConfiguration(conf().configuration())) {
+  consumes<CrvCoincidenceClusterCollection>(_clusterTag);
+  consumes<CrvRecoPulseCollection>(_pulseTag);
+}
 
 void DqmCrvReco::beginJob() {
   art::ServiceHandle<art::TFileService> tfs;
