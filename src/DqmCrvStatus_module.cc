@@ -61,7 +61,10 @@ class DqmCrvStatus : public art::EDAnalyzer {
 DqmCrvStatus::DqmCrvStatus(const Parameters& conf) :
     art::EDAnalyzer(conf), _statusTag(conf().statusTag()), _daqErrorTag(conf().daqErrorTag()),
     _catalogueFile(conf().catalogueFile()),
-    _dqm(toConfig(conf().dqm().hists()), crvDqmConfiguration(conf().configuration())) {}
+    _dqm(toConfig(conf().dqm().hists()), crvDqmConfiguration(conf().configuration())) {
+  consumes<CrvStatusCollection>(_statusTag);
+  consumes<CrvDAQerrorCollection>(_daqErrorTag);
+}
 
 void DqmCrvStatus::beginJob() {
   art::ServiceHandle<art::TFileService> tfs;

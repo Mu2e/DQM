@@ -78,7 +78,12 @@ DqmCrvDigi::DqmCrvDigi(const Parameters& conf) :
     art::EDAnalyzer(conf), _digiTag(conf().digiTag()), _statusTag(conf().statusTag()),
     _catalogueFile(conf().catalogueFile()),
     _dqm(toConfig(conf().dqm().hists()), crvDqmConfiguration(conf().configuration()),
-         toDtPairs(conf().dqm())) {}
+         toDtPairs(conf().dqm())) {
+  consumes<CrvDigiCollection>(_digiTag);
+  if (!_statusTag.empty()) {
+    consumes<CrvStatusCollection>(_statusTag);
+  }
+}
 
 void DqmCrvDigi::beginJob() {
   art::ServiceHandle<art::TFileService> tfs;
