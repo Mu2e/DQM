@@ -158,17 +158,30 @@ class Driver:
                     len(points), points[0].label, points[-1].label, high_nid)
 
         lookback = int(getattr(self.evaluator, "lookback", 0) or 0)
+        # The highest nid of the points fully handled so far, and the first
+        # point that was not -- together they decide where the watermark may
+        # go if the batch does not finish.
         committed_nid = state.nid
+        stopped_at: Optional[Point] = None
 
         # One fetch for the whole batch rather than one per point: see
         # dqm.evaluate.points.History.
+        #
+        # An evaluator that asks for history cannot judge a point without it:
+        # trends, for one, says nothing below min_history, so "evaluating
+        # without it" passed every point as clean and moved the watermark past
+        # them. A failed load is a failed read, handled like the one above --
+        # nothing examined, the watermark left where it was, the run not ok.
         past = None
         if lookback:
             try:
                 past = History(self.reader, cfg.sid)
             except Exception as exc:
-                LOGGER.warning("could not load history for sid=%s (%s) -- "
-                               "evaluating without it", cfg.sid, type(exc).__name__)
+                LOGGER.error("could not load history for sid=%s: %s: %s -- "
+                             "nothing examined, watermark stays at %d",
+                             cfg.sid, type(exc).__name__, exc, state.nid)
+                result.errors.append(f"history read failed: {exc}")
+                return result
 
         for point in points:
             history: Sequence[Point] = ()
@@ -176,8 +189,14 @@ class Driver:
                 try:
                     history = past.before(point, lookback)
                 except Exception as exc:
-                    LOGGER.warning("%s: history unavailable (%s) -- evaluating "
-                                   "without it", point.label, type(exc).__name__)
+                    # Same reasoning, for one point: stop here, as for an
+                    # evaluator that raised, so the watermark stays short of it.
+                    LOGGER.error("%s: history unavailable: %s: %s",
+                                 point.label, type(exc).__name__, exc)
+                    result.errors.append(f"{point.label}: history unavailable: {exc}")
+                    result.failed += 1
+                    stopped_at = point
+                    break
 
             try:
                 findings = self.evaluator.evaluate(point, history)
@@ -190,6 +209,7 @@ class Driver:
                              point.label, type(exc).__name__, exc)
                 result.errors.append(f"{point.label}: {exc}")
                 result.failed += 1
+                stopped_at = point
                 break
 
             result.examined += 1
@@ -201,7 +221,7 @@ class Driver:
                 # nothing reads it yet.
                 LOGGER.info("%s: clean (%d metrics)",
                             point.label, len(point.measurements))
-                committed_nid = max(committed_nid, self._nid_of(point, high_nid))
+                committed_nid = self._nid_of(point, committed_nid)
                 continue
 
             for finding in findings:
@@ -213,15 +233,19 @@ class Driver:
                     result.errors.append(f"{point.label}: commit failed")
                     break
             else:
-                committed_nid = max(committed_nid, self._nid_of(point, high_nid))
+                committed_nid = self._nid_of(point, committed_nid)
                 continue
+            stopped_at = point
             break
 
         # In report mode the watermark advances anyway: the run is a dry run,
         # and re-examining the same points on every invocation would never let
         # it reach the present. Back up the state file before switching to
         # commit mode -- see dqm.evaluate.state.
-        advance_to = high_nid if (result.ok or not cfg.commit) else committed_nid
+        if result.ok or not cfg.commit:
+            advance_to = high_nid
+        else:
+            advance_to = self._stop_short(committed_nid, stopped_at, high_nid)
         state.advance(advance_to, result.examined, result.findings, cfg.mode)
         path = save_state(cfg.workdir, state,
                           name=cfg.state_file or "driver-state.json")
@@ -242,14 +266,37 @@ class Driver:
         return result
 
     @staticmethod
-    def _nid_of(point: Point, fallback: int) -> int:
-        """The watermark value this point accounts for.
+    def _nid_of(point: Point, current: int) -> int:
+        """The watermark value once this point is fully handled.
 
-        A point's measurements are one contiguous block of nids, so advancing
-        to the batch high-water mark once the point is done is correct; the
-        fallback is used because a Point does not carry its nids.
+        The point's own highest nid, never the batch high-water mark: using
+        the batch mark here meant that one clean point early in a batch let a
+        later failure save the watermark at the end of the batch, so the
+        failed point and everything after it were never examined again.
+
+        A point with no nids (built by hand, not from database rows) cannot
+        account for any, so it leaves the value where it was.
         """
-        return fallback
+        if point.max_nid is None:
+            return current
+        return max(current, point.max_nid)
+
+    @staticmethod
+    def _stop_short(handled_nid: int, failed: Optional[Point], high_nid: int) -> int:
+        """Where the watermark goes when the batch stopped at `failed`.
+
+        At the last nid of the points fully handled, and in any case below the
+        first nid of the point that failed. The second bound only matters if
+        two intervals' rows were committed interleaved (two writers at once):
+        an earlier point can then own a nid above the failed point's first
+        one, and stopping at the earlier point's last nid would bury the
+        failed point. Re-reading part of a handled point is the safe error;
+        skipping an unhandled one is not.
+        """
+        nid = min(handled_nid, high_nid)
+        if failed is not None and failed.min_nid is not None:
+            nid = min(nid, failed.min_nid - 1)
+        return nid
 
     # -- writing ----------------------------------------------------------
 

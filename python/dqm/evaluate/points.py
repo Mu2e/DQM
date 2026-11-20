@@ -85,6 +85,8 @@ def _build(numbers, limits, names: Mapping[int, str]) -> List[Point]:
             )
             for r in rows
         }
+        nids = [n for n in (_as_int(getattr(r, "nid", None)) for r in rows)
+                if n is not None]
         bare = Point(
             iid=iid,
             sid=int(first.sid),
@@ -96,6 +98,8 @@ def _build(numbers, limits, names: Mapping[int, str]) -> List[Point]:
             end_time=_time(getattr(first, "end_time", None)),
             measurements=measurements,
             names=names,
+            min_nid=min(nids) if nids else None,
+            max_nid=max(nids) if nids else None,
         )
         # Which band applies depends on where the point sits, so it can only
         # be resolved once the point's range is known.
@@ -103,13 +107,33 @@ def _build(numbers, limits, names: Mapping[int, str]) -> List[Point]:
     return points
 
 
+# A read that fails is not a read that found nothing.  DqmReader returns an
+# empty frame when there is nothing to find -- a source with no limits, say --
+# and raises (QueryEngineError) only when the query itself failed.  The reads
+# below used to catch that and carry on with nothing, so every point was
+# judged against no band, counted clean, and the watermark moved past it for
+# good.  They now log what failed and let it propagate: the driver records
+# the run as failed and leaves the watermark alone, so the next run retries.
+
+
+def _read_limits(reader, sid: int):
+    """Every limit band for this source; an empty frame if none are set."""
+    try:
+        return reader.limits(sid=sid, limit=None)
+    except Exception as exc:
+        LOGGER.warning("could not read limits for sid=%s: %s: %s",
+                       sid, type(exc).__name__, exc)
+        raise
+
+
 def _metric_names(reader, sid: int) -> Dict[int, str]:
     """vid -> "groupx/subgroup/namex", for logging and name-based config."""
     try:
         df = reader.values_for_source(sid)
-    except Exception:
-        LOGGER.debug("could not read metric names for sid=%s", sid, exc_info=True)
-        return {}
+    except Exception as exc:
+        LOGGER.warning("could not read metric names for sid=%s: %s: %s",
+                       sid, type(exc).__name__, exc)
+        raise
     return {
         int(r.vid): f"{r.groupx}/{r.subgroup}/{r.namex}" for r in df.itertuples()
     }
@@ -123,15 +147,18 @@ def _with_geometry(reader, sid: int, rows):
     start_run_x / start_run_y and the geometry was then silently lost, every
     point arriving with no run number.  Only merge when the columns really are
     missing, so this keeps working whichever way the reader behaves.
+
+    A point with no range cannot be matched to any band, so a failed read
+    here propagates rather than returning rows that would all pass.
     """
     if "start_run" in rows.columns or "start_time" in rows.columns:
         return rows
     try:
         intervals = reader.intervals(sid=sid, limit=None)
-    except Exception:
-        LOGGER.warning("could not attach interval ranges for sid=%s", sid,
-                       exc_info=True)
-        return rows
+    except Exception as exc:
+        LOGGER.warning("could not attach interval ranges for sid=%s: %s: %s",
+                       sid, type(exc).__name__, exc)
+        raise
     drop = [c for c in ("sid",) if c in intervals.columns]
     return rows.merge(intervals.drop(columns=drop), on="iid", how="left")
 
@@ -238,12 +265,7 @@ def new_points(
 
     chosen = _with_geometry(reader, sid, chosen)
 
-    limits = None
-    if with_limits:
-        try:
-            limits = reader.limits(sid=sid, limit=None)
-        except Exception:
-            LOGGER.debug("no limits available for sid=%s", sid, exc_info=True)
+    limits = _read_limits(reader, sid) if with_limits else None
 
     points = _build(chosen, limits, _metric_names(reader, sid))
     rank = {iid: i for i, iid in enumerate(iids)}
@@ -311,12 +333,7 @@ def load_history(
         return []
 
     chosen = merged[merged["iid"].isin(wanted)]
-    limits = None
-    if with_limits:
-        try:
-            limits = reader.limits(sid=sid, limit=None)
-        except Exception:
-            pass
+    limits = _read_limits(reader, sid) if with_limits else None
     points = _build(chosen, limits, before.names)
     rank = {iid: i for i, iid in enumerate(wanted)}
     points.sort(key=lambda p: rank.get(p.iid, 0))
@@ -332,11 +349,7 @@ def load_points(reader, sid: int, iids: Sequence[int]) -> List[Point]:
     if chosen.empty:
         return []
     chosen = _with_geometry(reader, sid, chosen)
-    try:
-        limits = reader.limits(sid=sid, limit=None)
-    except Exception:
-        limits = None
-    return _build(chosen, limits, _metric_names(reader, sid))
+    return _build(chosen, _read_limits(reader, sid), _metric_names(reader, sid))
 
 
 class History:
@@ -359,12 +372,7 @@ class History:
         self._names = _metric_names(reader, sid)
         numbers = reader.numbers(sid=sid, limit=None)
         self._rows = _with_geometry(reader, sid, numbers) if not numbers.empty else numbers
-        self._bands = None
-        if with_limits:
-            try:
-                self._bands = reader.limits(sid=sid, limit=None)
-            except Exception:
-                LOGGER.debug("no limits for sid=%s", sid, exc_info=True)
+        self._bands = _read_limits(reader, sid) if with_limits else None
         self._order = self._build_order()
 
     def _build_order(self):
