@@ -58,6 +58,17 @@ bool splitInputLine(const std::string& line, std::size_t nfields,
   }
   return true;
 }
+
+// The rows of a query result.  A result ends in a newline, so splitting
+// it leaves a blank last entry, which is dropped.  A query that matched
+// no rows returns "", which splits to no entries at all: dropping the
+// last entry unconditionally was undefined behaviour there, and crashed
+// print-numbers and print-limits --expand for a source with no rows.
+mu2e::StringVec resultRows(const std::string& result) {
+  mu2e::StringVec rows = mu2e::splitString(result, "\n");
+  if (!rows.empty() && rows.back().empty()) rows.pop_back();
+  return rows;
+}
 }  // namespace
 
 //***********************************************************
@@ -831,8 +842,7 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
 
   csv.clear();
   readTable("dqm.sources", csv);
-  lines = splitString(csv, "\n");
-  lines.pop_back();  // last entry is blank
+  lines = resultRows(csv);
   for (auto const& line : lines) {
     cols = splitString(line);
     smap[std::stoi(cols[0])] = line;
@@ -840,8 +850,7 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
 
   csv.clear();
   readTable("dqm.values", csv);
-  lines = splitString(csv, "\n");
-  lines.pop_back();  // last entry is blank
+  lines = resultRows(csv);
   for (auto const& line : lines) {
     cols = splitString(line);
     vmap[std::stoi(cols[0])] = line;
@@ -849,8 +858,7 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
 
   csv.clear();
   readTable("dqm.intervals", csv);
-  lines = splitString(csv, "\n");
-  lines.pop_back();  // last entry is blank
+  lines = resultRows(csv);
   for (auto const& line : lines) {
     cols = splitString(line);
     imap[std::stoi(cols[0])] = line;
@@ -865,8 +873,7 @@ int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std
     }
   }
 
-  auto rsv = splitString(result, "\n");
-  rsv.pop_back();  // last entry is blank
+  auto rsv = resultRows(result);
   std::ostringstream oss;
   for (auto const& rs : rsv) {
     // numbers
