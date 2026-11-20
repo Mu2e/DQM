@@ -10,6 +10,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -30,6 +31,32 @@ std::string sqlQuote(const std::string& str) {
 std::string sqlOrNull(const std::string& str, bool quote = true) {
   if (str.empty()) return "NULL";
   return quote ? sqlQuote(str) : str;
+}
+
+// Split one line of commit-value or commit-limit input, like
+// "cal,disk0,meanE,20.0,0.1,0", and check the parts that are not
+// numbers: the field count, a non-empty group, subgroup and name, and
+// that no earlier line named the same metric (the second insert would
+// break the unique key on vid,sid,iid).  Prints why and returns false
+// if the line cannot be committed.
+bool splitInputLine(const std::string& line, std::size_t nfields,
+                    std::set<std::string>& seen, mu2e::StringVec& sv) {
+  sv = mu2e::splitString(line);
+  if (sv.size() != nfields) {
+    std::cout << "Error - input value is not " << nfields << " fields "
+              << line << "\n";
+    return false;
+  }
+  if (sv[0].empty() || sv[1].empty() || sv[2].empty()) {
+    std::cout << "Error - input value has an empty group, subgroup or name "
+              << line << "\n";
+    return false;
+  }
+  if (!seen.insert(sv[0] + "," + sv[1] + "," + sv[2]).second) {
+    std::cout << "Error - input names the same metric twice " << line << "\n";
+    return false;
+  }
+  return true;
 }
 }  // namespace
 
@@ -143,14 +170,43 @@ int mu2e::DqmTool::commitValue(const std::string& sources,
     }
   }
 
-  // lookup or create, if necessary, the 4 table entries
-  // this doesn't need to be a transaction since each step is atomic
+  // Check every line before anything is written.  A line found bad
+  // part way through used to leave the lines before it committed; the
+  // interval then existed and numbers are unique per (vid,sid,iid), so
+  // every rerun of the same file failed on its first line and the rest
+  // could only be added by trimming the file by hand.
+  DqmValueCollection metrics;
+  DqmNumberCollection numbers;
+  std::set<std::string> seen;
+  for (auto const& vvs : values) {
+    // take a string like "cal,disk0,meanE,20.0,0.1,0"
+    StringVec sv;
+    if (!splitInputLine(vvs, 6, seen, sv)) return 1;
+    try {
+      numbers.emplace_back(sv[3], sv[4], sv[5]);
+    } catch (std::exception const&) {
+      std::cout << "Error - input value, sigma or code is not a number "
+                << vvs << "\n";
+      return 1;
+    }
+    metrics.emplace_back(sv[0], sv[1], sv[2]);
+  }
+
+  // lookup or create, if necessary, the 4 table entries, and insert the
+  // numbers, all in one transaction so that they land together or not
+  // at all.  As in commitAlarm, every failure past BEGIN is an sql
+  // error, and DbSql::execute disconnects on those, which aborts the
+  // transaction, so the early returns cannot leave a partial commit.
 
   std::string command, result;
   rc = _sql.connect();
   if (rc) return rc;
 
   command = "SET ROLE dqmWrite;";
+  rc = execute(command, result);
+  if (rc) return rc;
+
+  command = "BEGIN;";
   rc = execute(command, result);
   if (rc) return rc;
 
@@ -169,24 +225,21 @@ int mu2e::DqmTool::commitValue(const std::string& sources,
     if (rc) return rc;
   }
 
-  for (auto const& vvs : values) {
-    // take a string like "cal,disk0,menaE,20.0,0.1,0"
-    // validate and split it into fields
-    StringVec sv = splitString(vvs);
-    if (sv.size() != 6) {
-      std::cout << "Error - input value is not 6 fields " << vvs << "\n";
-      return 1;
-    }
-    DqmValue value(sv[0], sv[1], sv[2]);
+  for (std::size_t i = 0; i < metrics.size(); ++i) {
+    DqmValue& value = metrics[i];
     rc = locateValue(value);
     if (rc) return rc;
-    DqmNumber number(sv[3], sv[4], sv[5]);
+    DqmNumber& number = numbers[i];
     number.setSid(source.sid());
     number.setIid(interval.iid());
     number.setVid(value.vid());
     rc = insertNumber(number);
     if (rc) return rc;
   }
+
+  command = "COMMIT;";
+  rc = execute(command, result);
+  if (rc) return rc;
 
   rc = _sql.disconnect();
   if (rc) return rc;
@@ -285,14 +338,37 @@ int mu2e::DqmTool::commitLimit(const std::string& sources,
     }
   }
 
-  // lookup or create, if necessary, the 4 table entries
-  // this doesn't need to be a transaction since each step is atomic
+  // Check every line before anything is written, for the reason given
+  // in commitValue: limits are unique per (vid,sid,iid) too.
+  DqmValueCollection metrics;
+  DqmLimitCollection bands;
+  std::set<std::string> seen;
+  for (auto const& vvs : limits) {
+    // take a string like "cal,disk0,meanE,10.0,30.0,2.5,0"
+    StringVec sv;
+    if (!splitInputLine(vvs, 7, seen, sv)) return 1;
+    try {
+      bands.emplace_back(sv[3], sv[4], sv[5], sv[6]);
+    } catch (std::exception const&) {
+      std::cout << "Error - input limit, sigma or alarmcode is not a number "
+                << vvs << "\n";
+      return 1;
+    }
+    metrics.emplace_back(sv[0], sv[1], sv[2]);
+  }
+
+  // lookup or create, if necessary, the 4 table entries, and insert the
+  // limits, all in one transaction, as in commitValue
 
   std::string command, result;
   rc = _sql.connect();
   if (rc) return rc;
 
   command = "SET ROLE dqmWrite;";
+  rc = execute(command, result);
+  if (rc) return rc;
+
+  command = "BEGIN;";
   rc = execute(command, result);
   if (rc) return rc;
 
@@ -303,24 +379,21 @@ int mu2e::DqmTool::commitLimit(const std::string& sources,
   rc = locateInterval(interval);
   if (rc) return rc;
 
-  for (auto const& vvs : limits) {
-    // take a string like "cal,disk0,meanE,10.0,30.0,2.5,0"
-    // validate and split it into fields
-    StringVec sv = splitString(vvs);
-    if (sv.size() != 7) {
-      std::cout << "Error - input value is not 7 fields " << vvs << "\n";
-      return 1;
-    }
-    DqmValue value(sv[0], sv[1], sv[2]);
+  for (std::size_t i = 0; i < metrics.size(); ++i) {
+    DqmValue& value = metrics[i];
     rc = locateValue(value);
     if (rc) return rc;
-    DqmLimit limit(sv[3], sv[4], sv[5], sv[6]);
+    DqmLimit& limit = bands[i];
     limit.setSid(source.sid());
     limit.setIid(interval.iid());
     limit.setVid(value.vid());
     rc = insertLimit(limit);
     if (rc) return rc;
   }
+
+  command = "COMMIT;";
+  rc = execute(command, result);
+  if (rc) return rc;
 
   rc = _sql.disconnect();
   if (rc) return rc;
