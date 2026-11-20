@@ -2,13 +2,15 @@
 #include "Offline/GeneralUtilities/inc/splitString.hh"
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 
 //****************************************************
 mu2e::DqmInterval::DqmInterval(const std::string& csv) {
   StringVec sv = splitString(csv);
   if (sv.size() != 8) {
     throw std::invalid_argument(
-        "DqmInterval csv string field count is not 8: " + sv.size());
+        "DqmInterval csv string field count is not 8: " +
+        std::to_string(sv.size()));
   }
   _iid = std::stoi(sv[0]);
   _sid = std::stoi(sv[1]);
