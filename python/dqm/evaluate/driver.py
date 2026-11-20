@@ -166,13 +166,22 @@ class Driver:
 
         # One fetch for the whole batch rather than one per point: see
         # dqm.evaluate.points.History.
+        #
+        # An evaluator that asks for history cannot judge a point without it:
+        # trends, for one, says nothing below min_history, so "evaluating
+        # without it" passed every point as clean and moved the watermark past
+        # them. A failed load is a failed read, handled like the one above --
+        # nothing examined, the watermark left where it was, the run not ok.
         past = None
         if lookback:
             try:
                 past = History(self.reader, cfg.sid)
             except Exception as exc:
-                LOGGER.warning("could not load history for sid=%s (%s) -- "
-                               "evaluating without it", cfg.sid, type(exc).__name__)
+                LOGGER.error("could not load history for sid=%s: %s: %s -- "
+                             "nothing examined, watermark stays at %d",
+                             cfg.sid, type(exc).__name__, exc, state.nid)
+                result.errors.append(f"history read failed: {exc}")
+                return result
 
         for point in points:
             history: Sequence[Point] = ()
@@ -180,8 +189,14 @@ class Driver:
                 try:
                     history = past.before(point, lookback)
                 except Exception as exc:
-                    LOGGER.warning("%s: history unavailable (%s) -- evaluating "
-                                   "without it", point.label, type(exc).__name__)
+                    # Same reasoning, for one point: stop here, as for an
+                    # evaluator that raised, so the watermark stays short of it.
+                    LOGGER.error("%s: history unavailable: %s: %s",
+                                 point.label, type(exc).__name__, exc)
+                    result.errors.append(f"{point.label}: history unavailable: {exc}")
+                    result.failed += 1
+                    stopped_at = point
+                    break
 
             try:
                 findings = self.evaluator.evaluate(point, history)
