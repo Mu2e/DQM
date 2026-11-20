@@ -85,6 +85,8 @@ def _build(numbers, limits, names: Mapping[int, str]) -> List[Point]:
             )
             for r in rows
         }
+        nids = [n for n in (_as_int(getattr(r, "nid", None)) for r in rows)
+                if n is not None]
         bare = Point(
             iid=iid,
             sid=int(first.sid),
@@ -96,6 +98,8 @@ def _build(numbers, limits, names: Mapping[int, str]) -> List[Point]:
             end_time=_time(getattr(first, "end_time", None)),
             measurements=measurements,
             names=names,
+            min_nid=min(nids) if nids else None,
+            max_nid=max(nids) if nids else None,
         )
         # Which band applies depends on where the point sits, so it can only
         # be resolved once the point's range is known.

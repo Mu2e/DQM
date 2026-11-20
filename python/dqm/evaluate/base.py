@@ -122,6 +122,12 @@ class Point:
     # Metric names, for logging and for an algorithm configured by name rather
     # than by vid.  Not every caller fills this in.
     names: Mapping[int, str] = field(default_factory=dict)
+    # The lowest and highest nid among this point's measurements: the stretch
+    # of the watermark this point accounts for.  The driver needs them to stop
+    # the watermark short of a point it could not finish.  None for a point
+    # built by hand rather than from database rows.
+    min_nid: Optional[int] = None
+    max_nid: Optional[int] = None
 
     def __contains__(self, vid: int) -> bool:
         return vid in self.measurements
