@@ -41,7 +41,7 @@ class DqmStm : public art::EDAnalyzer {
 
     //For later use
     fhicl::Atom<art::InputTag> stmDigisTag{Name("digiTag"), Comment("STM Digi Collection"), art::InputTag()};
-    fhicl::Atom<art::InputTag> stmPHDigisTag{Name("stmPHDigisTag"), Comment("Input Tag fo STMPHDigiCollection")};
+    fhicl::Atom<art::InputTag> stmPHDigisTag{Name("stmPHDigisTag"), Comment("Input Tag fo STMPHDigiCollection"), art::InputTag()};
     // fhicl::Atom<art::InputTag> recoTag{Name("recoTag"), Comment("STMRecoPulses Collection"), art::InputTag()};
   };
   typedef art::EDAnalyzer::Table<Config> Parameters;
@@ -105,12 +105,14 @@ private:
   // configrues fcl to local variables
   //Will come back to simplify this with channel name
 DqmStm::DqmStm(const Parameters& conf) : art::EDAnalyzer(conf), _conf(conf()) {
-  mayConsume<STMPHDigiCollection>(_conf.phHPGeTag()); //reads PH from the art file given in fcl
-  mayConsume<STMPHDigiCollection>(_conf.phLaBrTag());
-  mayConsume<STMWaveformDigiCollection>(_conf.rawHPGeTag());
-  mayConsume<STMWaveformDigiCollection>(_conf.rawLaBrTag());
-  mayConsume<STMWaveformDigiCollection>(_conf.zsHPGeTag());
-  mayConsume<STMWaveformDigiCollection>(_conf.zsLaBrTag());
+  // STMDigisFromFragments writes the waveform and pulse-height digis as
+  // maps, with one entry per STM event (event window) in the art event
+  mayConsume<STMPHDigiCollectionMap>(_conf.phHPGeTag()); //reads PH from the art file given in fcl
+  mayConsume<STMPHDigiCollectionMap>(_conf.phLaBrTag());
+  mayConsume<STMWaveformDigiCollectionMap>(_conf.rawHPGeTag());
+  mayConsume<STMWaveformDigiCollectionMap>(_conf.rawLaBrTag());
+  mayConsume<STMWaveformDigiCollectionMap>(_conf.zsHPGeTag());
+  mayConsume<STMWaveformDigiCollectionMap>(_conf.zsLaBrTag());
   mayConsume<STMFragmentSummaryCollection>(_conf.HPGefragSummaryTag());
   mayConsume<STMFragmentSummaryCollection>(_conf.LaBrfragSummaryTag());
   //mayConsume<STMFragmentSummaryCollection>(_conf.stmPHDigisTag);
@@ -264,61 +266,62 @@ void DqmStm::analyze(const art::Event& event) {
     }
   }
 
+  // Each art event holds many STM events, one map entry each.  The count
+  // histograms are filled once per STM event, as Offline's
+  // ValSTMWaveformDigi does.
   if (!_conf.rawHPGeTag().empty()) {
-    auto rawDigiHandle = event.getValidHandle<STMWaveformDigiCollection>(_conf.rawHPGeTag());
-    const auto& rawdigis = *rawDigiHandle;
-    _hNRAWHPGe->Fill(rawdigis.size());
-    
-    for (const auto& dg : rawdigis){
-      for (const auto& adc : dg.adcs()) _hRawHPGeADC->Fill(adc);}
+    auto rawDigiHandle = event.getValidHandle<STMWaveformDigiCollectionMap>(_conf.rawHPGeTag());
+    for (const auto& [header, rawdigis] : *rawDigiHandle) {
+      _hNRAWHPGe->Fill(rawdigis.size());
+      for (const auto& dg : rawdigis){
+        for (const auto& adc : dg.adcs()) _hRawHPGeADC->Fill(adc);}
+    }
   }
 
   if (!_conf.rawLaBrTag().empty()) {
-    auto rawDigiHandle = event.getValidHandle<STMWaveformDigiCollection>(_conf.rawLaBrTag());
-    const auto& rawdigis = *rawDigiHandle;
-    _hNRAWLaBr->Fill(rawdigis.size());
-
-    for (const auto& dg : rawdigis){
-      for (const auto& adc : dg.adcs()) _hRawLaBrADC->Fill(adc);}
+    auto rawDigiHandle = event.getValidHandle<STMWaveformDigiCollectionMap>(_conf.rawLaBrTag());
+    for (const auto& [header, rawdigis] : *rawDigiHandle) {
+      _hNRAWLaBr->Fill(rawdigis.size());
+      for (const auto& dg : rawdigis){
+        for (const auto& adc : dg.adcs()) _hRawLaBrADC->Fill(adc);}
+    }
   }
 
   if (!_conf.zsHPGeTag().empty()) {
-    auto zsDigiHandle = event.getValidHandle<STMWaveformDigiCollection>(_conf.zsHPGeTag());
-    const auto& zsdigis = *zsDigiHandle;
-    _hNZSHPGe->Fill(zsdigis.size());
-
-    for (const auto& dg : zsdigis){
-      for (const auto& adc : dg.adcs()) _hZSHPGeADC->Fill(adc);}
+    auto zsDigiHandle = event.getValidHandle<STMWaveformDigiCollectionMap>(_conf.zsHPGeTag());
+    for (const auto& [header, zsdigis] : *zsDigiHandle) {
+      _hNZSHPGe->Fill(zsdigis.size());
+      for (const auto& dg : zsdigis){
+        for (const auto& adc : dg.adcs()) _hZSHPGeADC->Fill(adc);}
+    }
   }
 
   if (!_conf.zsLaBrTag().empty()) {
-    auto zsDigiHandle = event.getValidHandle<STMWaveformDigiCollection>(_conf.zsLaBrTag());
-    const auto& zsdigis = *zsDigiHandle;
-    _hNZSLaBr->Fill(zsdigis.size());
-
-    for (const auto& dg : zsdigis){
-      for (const auto& adc : dg.adcs()) _hZSLaBrADC->Fill(adc);}
+    auto zsDigiHandle = event.getValidHandle<STMWaveformDigiCollectionMap>(_conf.zsLaBrTag());
+    for (const auto& [header, zsdigis] : *zsDigiHandle) {
+      _hNZSLaBr->Fill(zsdigis.size());
+      for (const auto& dg : zsdigis){
+        for (const auto& adc : dg.adcs()) _hZSLaBrADC->Fill(adc);}
+    }
   }
 
   if (!_conf.phHPGeTag().empty()) {
-    auto phDigiHandle = event.getValidHandle<STMPHDigiCollection>(_conf.phHPGeTag());
-    const auto& phDigis = *phDigiHandle;
-
-    _hNPHHPGe->Fill(phDigis.size());
-
-    for (const auto& phDigi: phDigis) {
-      _hPulseHeightHPGe->Fill(phDigi.energy());
+    auto phDigiHandle = event.getValidHandle<STMPHDigiCollectionMap>(_conf.phHPGeTag());
+    for (const auto& [header, phDigis] : *phDigiHandle) {
+      _hNPHHPGe->Fill(phDigis.size());
+      for (const auto& phDigi: phDigis) {
+        _hPulseHeightHPGe->Fill(phDigi.energy());
+      }
     }
   }
 
   if (!_conf.phLaBrTag().empty()) {
-    auto phDigiHandle = event.getValidHandle<STMPHDigiCollection>(_conf.phLaBrTag());
-    const auto& phDigis = *phDigiHandle;
-    
-    _hNPHLaBr->Fill(phDigis.size());
-    
-    for (const auto& phDigi: phDigis) {
-      _hPulseHeightLaBr->Fill(phDigi.energy());
+    auto phDigiHandle = event.getValidHandle<STMPHDigiCollectionMap>(_conf.phLaBrTag());
+    for (const auto& [header, phDigis] : *phDigiHandle) {
+      _hNPHLaBr->Fill(phDigis.size());
+      for (const auto& phDigi: phDigis) {
+        _hPulseHeightLaBr->Fill(phDigi.energy());
+      }
     }
   }
 

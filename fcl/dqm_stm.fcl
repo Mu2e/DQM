@@ -11,6 +11,9 @@ physics:
 {
   producers : {}
   analyzers : {
+   # The input must come from STMDigisFromFragments with the raw and
+   # zero-suppressed waveforms saved (saveRawWaveforms* and
+   # saveZSWaveforms*, both off by default); otherwise set those tags to "".
    dqmStm : {
      module_type : DqmStm
      phHPGeTag: "makeSTMDigis:phHPGe"
