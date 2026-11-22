@@ -18,6 +18,7 @@
 #include "Offline/CRVConditions/inc/CRVStatus.hh"
 #include "Offline/CosmicRayShieldGeom/inc/CosmicRayShield.hh"
 #include "Offline/CRVDQM/inc/CRVDigiDQM.hh"
+#include "Offline/CRVDQM/inc/CRVDigiDQMConfig.hh"
 #include "Offline/CRVDQM/inc/CRVDQMLayout.hh"
 #include "Offline/DQMHelpers/inc/DQMHistSetConfig.hh"
 #include "Offline/GeometryService/inc/GeomHandle.hh"
@@ -45,8 +46,9 @@ class DqmCrvDigi : public art::EDAnalyzer {
         Name("configuration"),
         Comment("CRVDQMRun1 configuration to book (run1a or extracted); must match the geometry"),
         "run1a"};
-    fhicl::Table<DQMClientFhicl> dqm{
-        Name("dqm"), Comment("CRVDigiDQM configuration; see Offline/CRVDQM/fcl/prolog.fcl")};
+    fhicl::Table<CRVDigiDQMFhicl> dqm{
+        Name("dqm"),
+        Comment("CRVDigiDQM configuration (hists, dtPairs); see Offline/CRVDQM/fcl/prolog.fcl")};
     fhicl::Atom<std::string> catalogueFile{
         Name("catalogueFile"),
         Comment("write the histogram catalogue (name, type, axes) here at end of job; empty skips it"),
@@ -75,7 +77,13 @@ class DqmCrvDigi : public art::EDAnalyzer {
 DqmCrvDigi::DqmCrvDigi(const Parameters& conf) :
     art::EDAnalyzer(conf), _digiTag(conf().digiTag()), _statusTag(conf().statusTag()),
     _catalogueFile(conf().catalogueFile()),
-    _dqm(toConfig(conf().dqm().hists()), crvDqmConfiguration(conf().configuration())) {}
+    _dqm(toConfig(conf().dqm().hists()), crvDqmConfiguration(conf().configuration()),
+         toDtPairs(conf().dqm())) {
+  consumes<CrvDigiCollection>(_digiTag);
+  if (!_statusTag.empty()) {
+    consumes<CrvStatusCollection>(_statusTag);
+  }
+}
 
 void DqmCrvDigi::beginJob() {
   art::ServiceHandle<art::TFileService> tfs;
