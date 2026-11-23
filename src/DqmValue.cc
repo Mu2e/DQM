@@ -2,6 +2,7 @@
 #include "Offline/GeneralUtilities/inc/splitString.hh"
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 
 //****************************************************
 mu2e::DqmValue::DqmValue(const std::string& csv) {
@@ -18,7 +19,8 @@ mu2e::DqmValue::DqmValue(const std::string& csv) {
     _name = sv[3];
   } else {
     throw std::invalid_argument(
-        "DqmValue csv string field count is not 3 or 4: " + sv.size());
+        "DqmValue csv string field count is not 3 or 4: " +
+        std::to_string(sv.size()));
   }
   if (_group.empty() || _subgroup.empty() || _name.empty()) {
     throw std::invalid_argument("DqmValue missing csv fields " + csv);

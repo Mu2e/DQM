@@ -383,9 +383,13 @@ as does one arriving after someone retired the old one.
 ## Pitfalls
 
 * **A point past the watermark is never examined again.** If `evaluate` raises,
-  the driver logs it, stops the batch and leaves the watermark short of the
-  failure — deliberately, so nothing is lost. But a bug that returns a wrong
-  answer quietly is permanent for those points.
+  or a commit fails all its retries, the driver logs it, stops the batch and
+  leaves the watermark short of the failure — deliberately, so nothing is
+  lost. A failed read of the points, their limits, the metric names or (for
+  an evaluator with a `lookback`) the history fails the run before anything
+  is examined and leaves the watermark where it was; an empty result is not a
+  failure. But a bug that returns a wrong answer quietly is permanent for
+  those points.
 * **Do not put the workdir anywhere with a comma in the path.** `dqmTool`
   decides whether `--cause` is an inline cause or a filename by looking for a
   comma, and a multi-cause finding has to go through a file. The driver checks

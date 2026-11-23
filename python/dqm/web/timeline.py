@@ -143,6 +143,25 @@ def _parse_window(raw, mode: str) -> Tuple[Optional[float], str]:
     return value, ""
 
 
+def _window_for_mode(mode, current) -> Tuple[str, str, str]:
+    """The window field's label, placeholder and value after the user changes
+    the x axis by hand.
+
+    The value resets to that mode's default rather than carrying over:
+    365 is a sensible number of days and an unhelpful number of runs, and
+    silently reinterpreting the same number in a different unit is how a
+    plot ends up showing something other than what was asked for. A
+    deliberately blank field is preserved -- "everything" means the same
+    in both modes.
+
+    Not used when a dashboard sets the mode: a dashboard sets its own window.
+    """
+    spec = MODES.get(mode, MODES["time"])
+    if current is not None and str(current).strip() == "":
+        return spec["label"], spec["default"], ""
+    return spec["label"], spec["default"], spec["default"]
+
+
 def _band_steps(ordered, key: str, vid: int, bands) -> Tuple[List, List]:
     """The llimit and ulimit staircases across a metric's points.
 
@@ -428,13 +447,18 @@ def register(app) -> None:
         Output(ID(PREFIX, "window"), "value"),
         Output(ID(PREFIX, "opts"), "value"),
         Output(ID(PREFIX, "dashboard-note"), "children"),
+        Output(ID(PREFIX, "window-label"), "children"),
+        Output(ID(PREFIX, "window"), "placeholder"),
         Input({"type": PREFIX + "sid", "index": ALL}, "value"),
         Input(ID(PREFIX, "dashboard"), "value"),
+        Input(ID(PREFIX, "mode"), "value"),
         State({"type": PREFIX + "vid", "index": ALL}, "value"),
+        State(ID(PREFIX, "window"), "value"),
     )
-    def _fill_rows(sids, dashboard_name, vids):
-        """Keep each row's metric list in step with its source, and apply a
-        dashboard when one is chosen.
+    def _fill_rows(sids, dashboard_name, mode_now, vids, window_now):
+        """Keep each row's metric list in step with its source, apply a
+        dashboard when one is chosen, and relabel the window when the x axis
+        is changed by hand.
 
         These are one callback rather than two on purpose. Applying a
         dashboard sets both the source and the metric of every row; if a
@@ -442,6 +466,17 @@ def register(app) -> None:
         fire it in parallel and it would reset the metric to that source's
         first -- discarding exactly the choice the dashboard was expressing.
         One callback decides both, so there is no race to lose.
+
+        The window field is owned here for the same reason. A separate
+        callback that reset the window whenever the mode changed also fired
+        when a dashboard set the mode -- Dash fires a callback for every
+        property another callback returns, changed or not -- and put the mode
+        default back over the dashboard's window (365 days instead of 90).
+        Two writers of one property are also an error under --debug, which
+        stops every callback in the app. Here the trigger says which it was:
+        a dashboard sets its own window, a hand-made mode change resets it.
+        Dash does not re-fire a callback because of its own output, so the
+        mode this callback sets does not come back as a mode change.
 
         It also means a source change recomputes every row's options rather
         than just its own. The lookup is cached, so that costs nothing.
@@ -452,13 +487,21 @@ def register(app) -> None:
         n = len(sids)
         keep_sids = [dash.no_update] * n
         note = ""
+        label = placeholder = dash.no_update
+
+        if triggered == ID(PREFIX, "mode"):
+            label, placeholder, window = _window_for_mode(mode_now, window_now)
+            return ([dash.no_update] * n, [dash.no_update] * n, keep_sids,
+                    dash.no_update, dash.no_update, window, dash.no_update,
+                    dash.no_update, label, placeholder)
 
         if by_dashboard and dashboard_name:
             board = DASHBOARDS_BY_NAME.get(dashboard_name)
             if board is None:
                 return ([dash.no_update] * n, [dash.no_update] * n, keep_sids,
                         dash.no_update, dash.no_update, dash.no_update,
-                        dash.no_update, f"unknown dashboard {dashboard_name!r}")
+                        dash.no_update, f"unknown dashboard {dashboard_name!r}",
+                        label, placeholder)
 
             r = reader()
             pairs, problems = [], []
@@ -473,7 +516,8 @@ def register(app) -> None:
                 return ([dash.no_update] * n, [dash.no_update] * n, keep_sids,
                         dash.no_update, dash.no_update, dash.no_update,
                         dash.no_update,
-                        "This dashboard has no usable series: " + "; ".join(problems))
+                        "This dashboard has no usable series: " + "; ".join(problems),
+                        label, placeholder)
 
             if len(pairs) > n:
                 problems.append(
@@ -490,6 +534,8 @@ def register(app) -> None:
             count = len(pairs)
             mode = board.mode
             window = board.window_text
+            spec = MODES.get(mode, MODES["time"])
+            label, placeholder = spec["label"], spec["default"]
             opts = list(board.options)
             note = "; ".join(problems)
         else:
@@ -521,7 +567,8 @@ def register(app) -> None:
             else:
                 values.append(None)
 
-        return options, values, keep_sids, count, mode, window, opts, note
+        return (options, values, keep_sids, count, mode, window, opts, note,
+                label, placeholder)
 
     @app.callback(
         [Output(ID(PREFIX, f"row-{i}"), "style") for i in range(MAX_SERIES)],
@@ -540,28 +587,6 @@ def register(app) -> None:
             {**base, "display": "flex" if i < count else "none"}
             for i in range(MAX_SERIES)
         ]
-
-    @app.callback(
-        Output(ID(PREFIX, "window-label"), "children"),
-        Output(ID(PREFIX, "window"), "placeholder"),
-        Output(ID(PREFIX, "window"), "value"),
-        Input(ID(PREFIX, "mode"), "value"),
-        State(ID(PREFIX, "window"), "value"),
-    )
-    def _window_for_mode(mode, current):
-        """Relabel the window field when the x axis changes.
-
-        The value resets to that mode's default rather than carrying over:
-        365 is a sensible number of days and an unhelpful number of runs, and
-        silently reinterpreting the same number in a different unit is how a
-        plot ends up showing something other than what was asked for. A
-        deliberately blank field is preserved -- "everything" means the same
-        in both modes.
-        """
-        spec = MODES.get(mode, MODES["time"])
-        if current is not None and str(current).strip() == "":
-            return spec["label"], spec["default"], ""
-        return spec["label"], spec["default"], spec["default"]
 
     @app.callback(
         Output(ID(PREFIX, "tick"), "disabled"),
