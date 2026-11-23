@@ -3,7 +3,6 @@
 
 #include "DQM/inc/DqmMetrics.hh"
 #include "TFile.h"
-#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -13,14 +12,13 @@ namespace {
 // dqmTool commit-value --value dqmMetrics.txt
 const char* const outName = "dqmMetrics.txt";
 
-// On any failure, exit non-zero and leave no metrics file behind.  An
-// empty file with status 0 used to let a chained commit-value record the
-// interval with no numbers, so the failure looked like "no data"; and a
-// file left over from an earlier run must not be committed in place of
-// this one's by a script that ignores the status.
+// On any failure, say what went wrong and exit non-zero.  An empty file
+// with status 0 used to let a chained commit-value record the interval
+// with no numbers, so the failure looked like "no data".  Any file
+// already in the working directory is left alone: it may be a previous
+// run's good output, and this tool does not own what it did not write.
 int fail(const std::string& why) {
   std::cerr << "ERROR - dqmMetrics: " << why << std::endl;
-  std::remove(outName);
   return 1;
 }
 }  // namespace
