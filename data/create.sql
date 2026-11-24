@@ -112,6 +112,41 @@ GRANT INSERT ON dqm.limits TO dqmwrite;
 GRANT UPDATE ON dqm.limits_lid_seq TO dqmwrite;
 
 
+-- rows are golden, or reference, files.  The payload is the name of one
+-- file that the metrics of a source should be compared against.  Like a
+-- limit, the interval is one of validity rather than of measurement: a
+-- golden file declared from run 125000 with no end is the reference for
+-- every later run until a newer declaration supersedes it, and the rule
+-- for which one applies at a point is the same -- among the rows whose
+-- range covers it, the one committed most recently, i.e. the highest
+-- gid.  See dqm/bands.py, which holds that rule for both tables.
+--
+-- Unlike a limit this is keyed by source and range only: one reference
+-- file covers every metric the source reports, so there is no vid.  The
+-- unique constraint is on the file as well as the range, so committing
+-- the same file over the same range again is a no-op, while naming a
+-- different file over the same range adds a row that supersedes it --
+-- which is how a reference that turned out to be bad gets replaced.
+-- The file may be one of the source's own (see dqm.files) or one made
+-- by hand, an average say; the name is recorded as given and is not
+-- checked for existence, since the commit often runs where the file is
+-- not visible.  note is for how a hand-made one was made.
+CREATE TABLE dqm.golden (
+  gid SERIAL,
+  sid INTEGER NOT NULL,
+  iid INTEGER NOT NULL,
+  filename TEXT NOT NULL,
+  note TEXT,
+  CONSTRAINT golden_pk PRIMARY KEY (gid),
+  CONSTRAINT golden_sid_fk FOREIGN KEY (sid) REFERENCES dqm.sources(sid),
+  CONSTRAINT golden_iid_fk FOREIGN KEY (iid) REFERENCES dqm.intervals(iid),
+  CONSTRAINT golden_unique UNIQUE (sid,iid,filename)
+  );
+GRANT SELECT ON dqm.golden TO PUBLIC;
+GRANT INSERT ON dqm.golden TO dqmwrite;
+GRANT UPDATE ON dqm.golden_gid_seq TO dqmwrite;
+
+
 -- rows are alarm episodes.  One row covers a condition from when it
 -- was first seen until it stopped being extended, however many
 -- intervals that spans.

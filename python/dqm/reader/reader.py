@@ -59,11 +59,13 @@ import pandas as pd
 
 from dqm import schema
 from dqm.errors import DqmConfigError, TooManyQueriesError
-from dqm.bands import in_force, newest_first
+from dqm.bands import in_force, in_force_one, newest_first
 from dqm.frames import empty_frame, is_truncated, preserve_attrs, tag
 from dqm.schema import (
     ALARM_VALUES,
     CODE_VALUES,
+    FILES,
+    GOLDEN,
     INTERVALS,
     METRIC_TABLES,
     SOURCES,
@@ -634,6 +636,98 @@ class DqmReader:
         when = to_utc(time) if time is not None else None
         rows = self.limits(sid=sid, vid=vid, limit=None, **kwargs)
         return in_force(newest_first(rows), run=run, subrun=subrun, time=when)
+
+    # ------------------------------------------------------- files and golden
+
+    def files(
+        self,
+        sid: IdSpec = None,
+        iid: IdSpec = None,
+        with_intervals: bool = True,
+        limit: Optional[int] = DEFAULT_LIMIT,
+    ) -> pd.DataFrame:
+        """The files a source's metrics were derived from.
+
+        The back pointer from a measurement to its origin: one row per file
+        of one (sid, iid), and a pair may have several. This is provenance,
+        not validity -- the interval is the one the metrics were measured in
+        -- so it is the opposite direction from golden() below.
+
+        with_intervals joins each row's run range and timestamps, which is
+        what makes "the file behind run N" answerable.
+        """
+        sids = _as_id_list(sid)
+        iids = _as_id_list(iid)
+
+        clauses: List[str] = []
+        if sids is not None and len(sids) == 1:
+            clauses.append(where_eq("sid", sids[0]))
+        if iids is not None and len(iids) == 1:
+            clauses.append(where_eq("iid", iids[0]))
+        elif iids is not None:
+            clauses.extend(self._id_range("iid", iids))
+
+        df = self.read_table(FILES, clauses=clauses or None, order="fid",
+                             limit=limit)
+        if sids is not None and len(sids) > 1:
+            df = self._isin(df, "sid", sids)
+        if iids is not None and len(iids) > 1:
+            df = self._isin(df, "iid", iids)
+        if with_intervals:
+            df = self.join_intervals(df)
+        return df
+
+    def golden(
+        self,
+        sid: IdSpec = None,
+        with_intervals: bool = True,
+        limit: Optional[int] = DEFAULT_LIMIT,
+    ) -> pd.DataFrame:
+        """The golden, or reference, files declared for a source.
+
+        A golden row's interval is one of validity, exactly as a limit's is,
+        so a row is not an annotation on the interval it names: it says "from
+        here on, until something newer says otherwise, this is the reference
+        file". Several rows for one source are therefore normal and only the
+        newest covering one applies -- see golden_in_force, and dqm.bands for
+        the rule.
+
+        with_intervals is on by default and is what makes the rows usable:
+        the ranges live in dqm.intervals, and dqm.bands.covers reads them off
+        the row.
+        """
+        sids = _as_id_list(sid)
+
+        clauses: List[str] = []
+        if sids is not None and len(sids) == 1:
+            clauses.append(where_eq("sid", sids[0]))
+
+        df = self.read_table(GOLDEN, clauses=clauses or None, order="gid",
+                             limit=limit)
+        if sids is not None and len(sids) > 1:
+            df = self._isin(df, "sid", sids)
+        if with_intervals:
+            df = self.join_intervals(df)
+        return df
+
+    def golden_in_force(self, sid: int, run=None, subrun=None, time=None,
+                        **kwargs):
+        """The golden file applying to one source at one run or time.
+
+        One row, or None when nothing covers the position -- most sources
+        have no reference declared, and a source that has one may have
+        declared it only from some run onwards. The answer is a row rather
+        than a name so that the caller can also see which declaration it came
+        from and over what range.
+
+        The limits_in_force note applies here too: to follow a timeline,
+        fetch once with golden() and call dqm.bands.newest_first and
+        in_force_one per point rather than paying for a query each.
+        """
+        when = to_utc(time) if time is not None else None
+        rows = self.golden(sid=sid, limit=None, **kwargs)
+        return in_force_one(newest_first(rows), run=run, subrun=subrun,
+                            time=when)
 
     def count_metrics(
         self,

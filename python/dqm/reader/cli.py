@@ -8,6 +8,7 @@ pipeline -- for anything programmatic, import DqmReader.
     dqm-reader --sources
     dqm-reader --sid 5 --vid 15 --summary
     dqm-reader --count
+    dqm-reader --sid 118 --golden
 """
 
 from __future__ import annotations
@@ -27,6 +28,12 @@ from dqm.schema import METRIC_TABLES
 DEFAULT_ROW_LIMIT = 20
 
 
+def _rows(df) -> str:
+    """A frame as text, saying so when there is nothing rather than printing
+    a bare header -- an empty answer here is usually the answer."""
+    return "(no matching rows)" if df.empty else df.to_string(index=False)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="dqm-reader",
@@ -40,6 +47,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--sources", action="store_true", help="list sources and exit")
     parser.add_argument("--values", action="store_true", help="list metric names and exit")
+    parser.add_argument("--files", action="store_true",
+                        help="list the files the metrics came from and exit")
+    parser.add_argument("--golden", action="store_true",
+                        help="list the golden reference files declared and exit")
     parser.add_argument("--sid", type=int, default=None, help="restrict to one source")
     parser.add_argument("--vid", type=int, default=None, help="restrict to one metric")
     parser.add_argument("--recent-days", type=float, default=None,
@@ -82,6 +93,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
         if args.values:
             print(reader.values(limit=limit).to_string(index=False))
+            return 0
+        # Both honour --sid, which is the filter that makes either readable:
+        # a file-aggregation source has thousands of files.
+        if args.files:
+            print(_rows(reader.files(sid=args.sid, limit=limit)))
+            return 0
+        if args.golden:
+            print(_rows(reader.golden(sid=args.sid, limit=limit)))
             return 0
 
         selection = dict(

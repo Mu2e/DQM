@@ -36,6 +36,7 @@ __all__ = [
     "NUMBERS",
     "LIMITS",
     "FILES",
+    "GOLDEN",
     "ALARMS",
     "ALARM_CAUSES",
     "METRIC_TABLES",
@@ -256,6 +257,23 @@ FILES = Table(
     ),
 )
 
+GOLDEN = Table(
+    name="golden",
+    pk="gid",
+    columns=("gid", "sid", "iid", "filename", "note"),
+    key=("sid", "iid", "filename"),
+    doc=(
+        "The golden, or reference, file a source's metrics are to be compared "
+        "against. Like a limit, its interval is one of validity rather than "
+        "of measurement, and the rule for which row applies at a point is the "
+        "same: of those whose range covers it, the most recently committed, "
+        "i.e. the highest gid. Keyed by source and range only -- one file "
+        "covers every metric the source reports, so there is no vid. Naming a "
+        "different file over a range already declared supersedes it; the same "
+        "file again is a no-op, which is what the key includes filename for."
+    ),
+)
+
 ALARMS = Table(
     name="alarms",
     pk="aid",
@@ -309,7 +327,8 @@ ALARM_CAUSES = Table(
 # one because that is what a caller has: a CLI argument, a config entry.
 TABLES: Dict[str, Table] = {
     t.name: t
-    for t in (SOURCES, VALUES, INTERVALS, NUMBERS, LIMITS, FILES, ALARMS, ALARM_CAUSES)
+    for t in (SOURCES, VALUES, INTERVALS, NUMBERS, LIMITS, FILES, GOLDEN, ALARMS,
+              ALARM_CAUSES)
 }
 
 # The two measurement tables. They share the (sid, vid, iid) key shape, so the
@@ -358,6 +377,7 @@ DTYPES: Dict[str, str] = {
     "nid": "Int64",
     "lid": "Int64",
     "fid": "Int64",
+    "gid": "Int64",
     "aid": "Int64",
     "cid": "Int64",
     # run/subrun ranges

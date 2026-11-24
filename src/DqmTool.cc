@@ -64,8 +64,16 @@ bool splitInputLine(const std::string& line, std::size_t nfields,
 // no rows returns "", which splits to no entries at all: dropping the
 // last entry unconditionally was undefined behaviour there, and crashed
 // print-numbers and print-limits --expand for a source with no rows.
-mu2e::StringVec resultRows(const std::string& result) {
-  mu2e::StringVec rows = mu2e::splitString(result, "\n");
+//
+// keepQuotes for a caller that hands the row text back as it came: the
+// query engine quotes a field holding a comma, and splitString removes
+// quote characters it has parsed, so a row split the usual way and then
+// printed has lost the quoting that made it unambiguous.  A caller that
+// only reads fields out of the row does not care.
+mu2e::StringVec resultRows(const std::string& result, bool keepQuotes = false) {
+  mu2e::StringVec rows =
+      keepQuotes ? mu2e::splitString(result, "\n", "")
+                 : mu2e::splitString(result, "\n");
   if (!rows.empty() && rows.back().empty()) rows.pop_back();
   return rows;
 }
@@ -414,6 +422,144 @@ int mu2e::DqmTool::commitLimit(const std::string& sources,
 
 //***********************************************************
 
+// Declare one golden, or reference, file for a source over one range of
+// runs or time.  The range is a range of validity, exactly as a limit's
+// is, so this reads like commit-limit with one file in place of the
+// per-metric bands - and with no loop, since one file covers every
+// metric the source reports.
+
+int mu2e::DqmTool::commitGolden(const std::string& sources,
+                                const std::string& runss,
+                                const std::string& start,
+                                const std::string& end,
+                                const std::string& filestr,
+                                const std::string& note) {
+  int rc;
+
+  // **** interpret source (process/stream/aggregation/version)
+
+  std::string ss = sources;
+  if (ss.empty()) {
+    std::cout << "ERROR - commit-golden requires --source" << std::endl;
+    return 1;
+  }
+
+  // take the ss string and parse it into proces/stream, etc, fields
+  DqmSource source(ss);
+
+  // **** interpret time interval
+
+  std::string rn = runss;
+  std::string st = start;
+  std::string en = end;
+
+  // must have some time or run restriction
+  if (rn.empty() && st.empty()) {
+    std::cout << "ERROR - commit-golden requires one of --runs or --start"
+              << std::endl;
+    return 1;
+  }
+  if (st.empty() && !en.empty()) {
+    std::cout << "ERROR - commit-golden --end is non-empty but --start is "
+                 "empty (opposite is allowed)"
+              << std::endl;
+    return 1;
+  }
+  // if there is a start time, but no end time, then set end to start
+  if (!st.empty() && en.empty()) en = st;
+  // if no times, set to irrelevent (there should still be a run range)
+  if (st.empty() && en.empty()) {
+    st = "-infinity";
+    en = "-infinity";
+  }
+  // if no run info given, set start and stop to 0
+  if (rn.empty()) rn = "EMPTY";
+
+  // container for time
+  DqmInterval interval(rn, st, en);
+
+  // **** interpret the file
+
+  if (filestr.empty()) {
+    std::cout << "ERROR - commit-golden requires --file" << std::endl;
+    return 1;
+  }
+  // The name is recorded as given and not checked for existence - the
+  // commit often runs where the file is not visible.  A comma is
+  // refused because every other value this tool takes is csv, and a
+  // name holding one could not be given back unambiguously.
+  if (filestr.find(',') != std::string::npos) {
+    std::cout << "ERROR - commit-golden --file cannot contain a comma: "
+              << filestr << std::endl;
+    return 1;
+  }
+
+  // A note may hold commas - the query engine quotes the field - but not
+  // a line break: every reader of these results, print-golden included,
+  // takes one row per line.
+  if (note.find('\n') != std::string::npos ||
+      note.find('\r') != std::string::npos) {
+    std::cout << "ERROR - commit-golden --note cannot contain a line break"
+              << std::endl;
+    return 1;
+  }
+
+  DqmGolden golden(filestr, note);
+
+  if (_verbose > 2) {
+    std::cout << "Running commit-golden with parameters:" << std::endl;
+    std::cout << "source :" << ss << std::endl;
+    std::cout << "runs   :" << rn << std::endl;
+    std::cout << "start  :" << st << std::endl;
+    std::cout << "end    :" << en << std::endl;
+    std::cout << "file   :" << filestr << std::endl;
+    std::cout << "note   :" << note << std::endl;
+  }
+
+  // **** write it
+
+  // One transaction, as commit-value and commit-limit do it: the source,
+  // the interval and the golden row land together or not at all, so a
+  // failure cannot leave an interval behind with nothing in it.  Every
+  // failure past BEGIN is an sql error, and DbSql::execute disconnects on
+  // those, which aborts the transaction.
+
+  std::string command, result;
+  rc = _sql.connect();
+  if (rc) return rc;
+
+  command = "SET ROLE dqmWrite;";
+  rc = execute(command, result);
+  if (rc) return rc;
+
+  command = "BEGIN;";
+  rc = execute(command, result);
+  if (rc) return rc;
+
+  rc = locateSource(source);
+  if (rc) return rc;
+
+  interval.setSid(source.sid());
+  rc = locateInterval(interval);
+  if (rc) return rc;
+
+  golden.setSid(source.sid());
+  golden.setIid(interval.iid());
+  rc = locateGolden(golden);
+  if (rc) return rc;
+
+  command = "COMMIT;";
+  rc = execute(command, result);
+  if (rc) return rc;
+
+  rc = _sql.disconnect();
+  if (rc) return rc;
+
+  return 0;
+}
+
+//***********************************************************
+
 // Take one finding from one evaluator instance and record it.  The
 // evaluator supplies the subject and the causes; algo, config and sid
 // identify the instance.  Identity is the four together, and a finding
@@ -705,12 +851,156 @@ int mu2e::DqmTool::printValues(bool heading) {
 
 //***********************************************************
 
-int mu2e::DqmTool::printFiles(bool heading) {
-  int rc = readTable("dqm.files", _result);
+int mu2e::DqmTool::printFiles(bool heading, const std::string& sources) {
+  // One source at a time is the useful question -- which files these
+  // metrics came from -- and the whole table is thousands of rows for a
+  // file-aggregation source, so it is worth not making the caller grep.
+  int sid = -1;
+  int rc = resolveSid(sources, sid);
+  if (rc) return rc;
+
+  StringVec where;
+  if (sid >= 0) where.emplace_back("sid:eq:" + std::to_string(sid));
+
+  rc = readTable("dqm.files", _result, "*", where);
   if (heading) {
     _result = "fid, sid, iid, filename\n" + _result;
   }
   return rc;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::coveringIids(int sid, const std::string& run,
+                                const std::string& time,
+                                std::set<int>& iids) {
+  iids.clear();
+
+  StringVec where;
+  if (sid >= 0) where.emplace_back("sid:eq:" + std::to_string(sid));
+
+  // Containment, not a bound: an interval of validity covers a position
+  // when it starts at or before it and ends at or after it.  An interval
+  // positioned only by run stores -infinity for both times and one
+  // positioned only by time stores run 0, so each is excluded from the
+  // other's query, which is the intent - a range that cannot be compared
+  // to the position does not cover it.
+  if (!run.empty()) {
+    std::string rn = run;
+    std::string sr;
+    std::size_t colon = rn.find(':');
+    if (colon != std::string::npos) {
+      sr = rn.substr(colon + 1);
+      rn = rn.substr(0, colon);
+    }
+    if (rn.empty() || rn.find_first_not_of("0123456789") != std::string::npos ||
+        (colon != std::string::npos &&
+         (sr.empty() ||
+          sr.find_first_not_of("0123456789") != std::string::npos))) {
+      std::cout << "ERROR - --run is not a run or run:subrun: " << run << "\n";
+      return 1;
+    }
+    where.emplace_back("start_run:le:" + rn);
+    where.emplace_back("end_run:ge:" + rn);
+    // Only when a subrun was actually given, as dqm.reader's intervals()
+    // does it: a bare run means the whole run, and bounding it by subrun 0
+    // would drop every range that starts part way into its first run.
+    // This is the coarse test the two ends of a range share; the exact
+    // one, which compares (run,subrun) as a pair, is in dqm/bands.py and
+    // is what decides what an alarm or a display actually used.
+    if (!sr.empty()) {
+      where.emplace_back("start_subrun:le:" + sr);
+      where.emplace_back("end_subrun:ge:" + sr);
+    }
+  }
+  if (!time.empty()) {
+    // A where clause is appended to the query engine's url unescaped, so
+    // a time has to be given in a form that survives that: the ISO
+    // "2026-11-19T06:38:46" spelling does, while a space between the date
+    // and the time, or a "+00:00" offset, would arrive altered and the
+    // comparison would fail for a reason nothing here could explain.
+    if (time.find_first_not_of("0123456789abcdefghijklmnopqrstuvwxyz"
+                               "ABCDEFGHIJKLMNOPQRSTUVWXYZ-:._") !=
+        std::string::npos) {
+      std::cout << "ERROR - --time must be ISO with a T and no offset, like "
+                   "\"2026-11-19T06:38:46\", not: "
+                << time << "\n";
+      return 1;
+    }
+    where.emplace_back("start_time:le:" + time);
+    where.emplace_back("end_time:ge:" + time);
+  }
+
+  std::string csv;
+  int rc = readTable("dqm.intervals", csv, "iid", where);
+  if (rc) return rc;
+
+  for (auto const& line : resultRows(csv)) {
+    StringVec cols = splitString(line);
+    if (cols.empty() || cols[0].empty()) continue;
+    iids.insert(std::stoi(cols[0]));
+  }
+  return 0;
+}
+
+//***********************************************************
+
+int mu2e::DqmTool::printGolden(bool heading, bool note,
+                               const std::string& sources,
+                               const std::string& run,
+                               const std::string& time) {
+  int sid = -1;
+  int rc = resolveSid(sources, sid);
+  if (rc) return rc;
+
+  // A position asks which declarations apply there.  The ranges live in
+  // dqm.intervals and the query engine cannot join, so the covering iids
+  // are fetched once, before the declarations, and the rows filtered
+  // against them here - one extra query rather than one per row.  First
+  // so that a misspelled position fails before anything is read.
+  bool filtered = !run.empty() || !time.empty();
+  std::set<int> iids;
+  if (filtered) {
+    rc = coveringIids(sid, run, time, iids);
+    if (rc) return rc;
+  }
+
+  // note is free text and may hold a comma, which would make the csv
+  // ambiguous, so it is opt-in as print-alarms' note is.
+  std::string select("gid,sid,iid,filename");
+  if (note) select += ",note";
+
+  StringVec where;
+  if (sid >= 0) where.emplace_back("sid:eq:" + std::to_string(sid));
+
+  // gid is a sequence, so commit order, which is the order the
+  // supersession rule reads: of the rows covering a point, the last one
+  // printed is the one in force.
+  std::string csv;
+  std::string order("sid,gid");
+  rc = _reader.query(csv, select, "dqm.golden", where, order);
+  if (rc) return rc;
+
+  if (filtered) {
+    // The row is kept or dropped whole and handed back as it came, not
+    // rebuilt from its fields: the note may hold a comma, and the quoting
+    // that makes that unambiguous has to survive.  Only the iid is read
+    // out, and the three leading fields are integers, so which quoting
+    // convention the fields use does not arise.
+    std::string kept;
+    for (auto const& line : resultRows(csv, true)) {
+      StringVec cols = splitString(line, ",", "");
+      if (cols.size() > 2 &&
+          cols[2].find_first_not_of("0123456789") == std::string::npos &&
+          iids.count(std::stoi(cols[2]))) {
+        kept += line + "\n";
+      }
+    }
+    csv = kept;
+  }
+
+  _result = heading ? select + "\n" + csv : csv;
+  return 0;
 }
 
 //***********************************************************
@@ -770,25 +1060,36 @@ int mu2e::DqmTool::printCauses(bool heading, bool numbers,
 
 //***********************************************************
 
+int mu2e::DqmTool::resolveSid(const std::string& sources, int& sid) {
+  sid = -1;
+  if (sources.empty()) return 0;  // no filter asked for
+
+  std::string ss = sources;
+  if (ss.find_first_not_of("0123456789") == std::string::npos) {
+    sid = std::stoi(ss);  // was an integer
+    return 0;
+  }
+
+  // is csv
+  DqmSource source(ss);
+  lookupSid(source);
+  sid = source.sid();
+  if (sid < 0) {
+    std::cout << "ERROR - source could not be interpreted:" << ss << "\n";
+    return 1;
+  }
+  return 0;
+}
+
+//***********************************************************
+
 int mu2e::DqmTool::printNumbers(const std::string& name, bool heading, const std::string& sources,
                                 const std::string& values, const bool& expand) {
   int rc = 0;
 
   int sid = -1;
-  if (!sources.empty()) {
-    std::string ss = sources;
-    if (ss.find_first_not_of("0123456789") == std::string::npos) {
-      sid = std::stoi(ss);  // was an integer
-    } else {                // is csv
-      DqmSource source(ss);
-      lookupSid(source);
-      sid = source.sid();
-      if (sid < 0) {
-        std::cout << "ERROR - source could not be interpreted:" << ss << "\n";
-        return 1;
-      }
-    }
-  }
+  rc = resolveSid(sources, sid);
+  if (rc) return rc;
 
   int vid = -1;
   if (!values.empty()) {
@@ -1137,6 +1438,51 @@ int mu2e::DqmTool::locateFile(DqmFile& file) {
     std::cout << "fid is " << fid << std::endl;
   }
   file.setFid(fid);
+  return 0;
+}
+
+//***********************************************************
+
+// Declaring the same file over the same range again is a no-op rather
+// than an error, since the declaration may be scripted: the existing row
+// is found instead of a duplicate being inserted, and it keeps the note
+// it was first given.  Naming a *different* file over that range does
+// insert, and the new row supersedes the old one by holding the higher
+// gid - which is how a reference that turned out to be bad is replaced,
+// there being no delete here.
+
+int mu2e::DqmTool::locateGolden(DqmGolden& golden) {
+  std::string command, result;
+
+  if (golden.sid() < 0 || golden.iid() < 0) {
+    std::cout << "Error - can't locate golden file with no sid or iid\n";
+    return 1;
+  }
+
+  std::string name = sqlQuote(golden.name());
+
+  command = "select gid from dqm.golden where sid=" +
+            std::to_string(golden.sid()) +
+            " and iid=" + std::to_string(golden.iid()) +
+            " and filename=" + name + ";";
+  int rc = execute(command, result);
+  if (rc) return rc;
+
+  if (result.empty()) {
+    command = "INSERT INTO dqm.golden (sid,iid,filename,note)  VALUES (" +
+              std::to_string(golden.sid()) + "," +
+              std::to_string(golden.iid()) + "," + name + "," +
+              sqlOrNull(golden.note()) + ") RETURNING gid;";
+    rc = execute(command, result);
+    if (rc) return rc;
+  }
+
+  int gid = std::stoi(result);
+
+  if (_verbose > 0) {
+    std::cout << "gid is " << gid << std::endl;
+  }
+  golden.setGid(gid);
   return 0;
 }
 
