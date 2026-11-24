@@ -16,8 +16,8 @@ from typing import Any, List
 
 from dash import Input, Output, dash_table, dcc, html
 
-from dqm.schema import (ALARM_LEVEL_NAMES as LEVEL_NAMES,
-                        ALARM_STATUSES, TERMINAL_ALARM_STATUSES)
+from dqm.schema import ALARM_LEVEL_NAMES as LEVEL_NAMES
+from dqm.schema import ALARM_STATUSES
 from dqm.web.common import (ID, REFRESH_MS, card, drawn_stamp, error_box,
                             kv_table, reader, row)
 
@@ -27,6 +27,30 @@ PREFIX = "alarm-"
 
 # Level is the episode's severity, escalating as the maximum over its causes.
 LEVEL_COLORS = {0: "#95A5A6", 1: "#F4D03F", 2: "#E67E22", 3: "#E74C3C"}
+
+# The same four hues darkened for use as text on white.  LEVEL_COLORS were
+# picked to sit behind white text, and a colour with enough contrast that way
+# has too little the other way round -- #F4D03F as text on white is all but
+# invisible.  These keep the hue, so the two palettes still read as one
+# scheme, and have the contrast to be legible at the table's 0.85rem.
+_GREY = "#707B7C"
+_AMBER = "#B7950B"
+_ORANGE = "#AF601A"
+_RED = "#C0392B"
+
+LEVEL_TEXT_COLORS = {0: _GREY, 1: _AMBER, 2: _ORANGE, 3: _RED}
+
+# Status is where the episode stands with the operators, not how bad it is.
+# Every status in the vocabulary is given a colour here, and anything added to
+# it later falls through to grey -- the safe default, since a status nobody has
+# thought about should not announce itself as urgent.
+STATUS_TEXT_COLORS = {s: _GREY for s in ALARM_STATUSES}
+STATUS_TEXT_COLORS.update({"active": _RED, "acknowledged": _ORANGE})
+
+# Where a status sorts.  ALARM_STATUSES is already in order of how much
+# attention the episode wants, so the rank is its position there; a status
+# outside the vocabulary sorts after all of them rather than first.
+STATUS_ORDER = {s: i for i, s in enumerate(ALARM_STATUSES)}
 
 
 def layout() -> Any:
@@ -218,6 +242,19 @@ def register(app) -> None:
 
         show = df[["aid", "algo", "config", "subject", "source", "level",
                    "status", "open", "ctime", "mtime"]].copy()
+
+        # Active episodes first, and within a status the worst and most
+        # recently extended first -- the first page should be what wants
+        # attention now.  Done here rather than with the table's own sort_by
+        # because native sorting compares the status text, and alphabetically
+        # "acknowledged" precedes "active".  Sorting the rows instead leaves
+        # the column headers free to re-sort however the viewer wants.
+        rank = show["status"].map(STATUS_ORDER).fillna(len(STATUS_ORDER))
+        show = (show.assign(_rank=rank)
+                    .sort_values(["_rank", "level", "mtime"],
+                                 ascending=[True, False, False])
+                    .drop(columns="_rank"))
+
         for col in ("ctime", "mtime"):
             show[col] = show[col].dt.strftime("%Y-%m-%d %H:%M")
 
@@ -231,20 +268,27 @@ def register(app) -> None:
             style_cell={"fontFamily": "monospace", "fontSize": "0.85rem",
                         "textAlign": "left", "padding": "0.4rem"},
             style_header={"fontWeight": 600, "background": "#f2f2f2"},
+            # Level and status are the two judgement columns, and both are
+            # read as text rather than as a block of colour: white behind,
+            # the hue in the glyphs, semibold so a coloured word reads as
+            # deliberate rather than as something gone wrong in rendering.
             style_data_conditional=[
                 {
                     "if": {"filter_query": f"{{level}} = {lvl}", "column_id": "level"},
-                    "backgroundColor": color,
-                    "color": "#fff",
+                    "backgroundColor": "#fff",
+                    "color": color,
+                    "fontWeight": 600,
                 }
-                for lvl, color in LEVEL_COLORS.items()
+                for lvl, color in LEVEL_TEXT_COLORS.items()
             ]
             + [
                 {
                     "if": {"filter_query": f'{{status}} = "{s}"', "column_id": "status"},
-                    "color": "#888",
+                    "backgroundColor": "#fff",
+                    "color": color,
+                    "fontWeight": 600,
                 }
-                for s in TERMINAL_ALARM_STATUSES
+                for s, color in STATUS_TEXT_COLORS.items()
             ],
         )
         line = html.Div([
