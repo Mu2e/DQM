@@ -189,10 +189,29 @@ r.downsample(df, n=200)    # ~200 time bins, each with mean, min and max
 `downsample` keeps per-bin min and max rather than striding, so an excursion
 between sample points survives.
 
+### Files and golden files
+
+Two tables tie a source's metrics to files, in opposite directions:
+
+```python
+r.files(sid=118)                  # which file each interval's metrics came from
+r.golden(sid=118)                 # which file they are to be compared against
+r.golden_in_force(118, run=125873)  # the one declaration applying there, or None
+```
+
+`files` is provenance: one row per file of one measurement interval, and an
+interval may have several. `golden` is a declaration of validity, exactly like
+a limit — "from here on, this is the reference" — so several rows for one
+source are normal and only the newest covering one applies. Both join
+`dqm.intervals` by default, since the run and time ranges are what make the
+rows answer a question. The supersession rule itself is in `dqm.bands`, shared
+with limits: `newest_first` then `in_force_one` to follow a timeline without a
+query per point.
+
 ### Tables without a dedicated method
 
-`dqm.alarms`, `dqm.alarm_causes` and `dqm.files` have no typed entry point yet;
-reach them through `read_table`, which takes any table in `dqm.schema`:
+`dqm.alarms` and `dqm.alarm_causes` have no typed entry point yet; reach them
+through `read_table`, which takes any table in `dqm.schema`:
 
 ```python
 r.read_table("alarms", limit=50)

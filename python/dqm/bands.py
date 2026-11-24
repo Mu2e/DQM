@@ -1,4 +1,4 @@
-"""Which limit band governs a point.
+"""Which limit band, or which golden file, governs a point.
 
 dqm.limits is keyed per interval, but a limit's interval is one of validity,
 not one of measurement: a band set at run 2112 with no end run governs every
@@ -11,6 +11,12 @@ recently wins -- highest lid, lid being a sequence and therefore commit order.
 Restating a band over a new range is how a limit is changed, and the newest
 statement is the one that counts.
 
+dqm.golden works the same way, with gid for lid and a file name for the band,
+so the same functions serve both: `covers` and `newest_first` are indifferent
+to the payload, and the only difference is the shape of the answer -- a limit
+per metric (`in_force`) against one file for the whole source (`in_force_one`),
+since a golden row carries no vid.
+
 This lives here rather than inside the evaluator because the display has to
 draw the band the evaluator judged against. A second copy of the rule would
 drift, and a timeline drawing a band that no alarm ever used is worse than one
@@ -21,7 +27,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence
 
-__all__ = ["has_run", "as_int", "as_time", "covers", "newest_first", "in_force"]
+__all__ = ["has_run", "as_int", "as_time", "covers", "newest_first", "in_force",
+           "in_force_one"]
 
 
 def has_run(run: Optional[int]) -> bool:
@@ -108,20 +115,25 @@ def covers(band, run=None, subrun=None, time=None) -> bool:
     return False
 
 
-def newest_first(limits) -> List[Any]:
+def newest_first(limits, key: Optional[str] = None) -> List[Any]:
     """Band rows as a list, newest commit first.
 
     Sorted once by the caller that holds the frame rather than per point: a
     source may have hundreds of bands and thousands of points. Accepts a
     DataFrame or an already-ordered sequence.
+
+    `key` is the sequence column that records commit order -- lid for
+    dqm.limits, gid for dqm.golden. It is found from the columns when not
+    given, so a caller holding either kind of frame needs to say nothing.
     """
     if limits is None:
         return []
     if hasattr(limits, "empty"):
         if limits.empty:
             return []
-        ordered = (limits.sort_values("lid", ascending=False)
-                   if "lid" in limits.columns else limits)
+        on = key or next((c for c in ("lid", "gid") if c in limits.columns), None)
+        ordered = (limits.sort_values(on, ascending=False)
+                   if on in limits.columns else limits) if on else limits
         return list(ordered.itertuples())
     return list(limits)
 
@@ -142,3 +154,19 @@ def in_force(bands: Sequence[Any], run=None, subrun=None,
             continue
         out[vid] = row
     return out
+
+
+def in_force_one(rows: Sequence[Any], run=None, subrun=None, time=None):
+    """The single row governing a position, or None if none covers it.
+
+    The same rule as in_force, for a table whose rows are not per metric.
+    dqm.golden is keyed by source and range alone -- one reference file
+    covers every metric the source reports -- so there is nothing to key the
+    answer by and "which declaration applies here" has one answer.
+
+    `rows` must be newest-commit-first, as newest_first returns.
+    """
+    for row in rows:
+        if covers(row, run=run, subrun=subrun, time=time):
+            return row
+    return None
