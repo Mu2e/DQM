@@ -35,6 +35,36 @@ static int dqmToolMain(int argc, char** argv) {
                      "list the files the metrics were derived from");
   pcli.addSwitch("print-files", "heading", "d", "heading", false,
                  "also print a header", "");
+  pcli.addSwitch(
+      "print-files", "source", "s", "source", true,
+      "only the files of this source, either\n       csv like "
+      "\"pass1,ele,file,0\" = process,stream,aggregation,version\n    "
+      "   or an SID");
+
+  pcli.addSubcommand("print-golden",
+                     "list the golden, or reference, files declared");
+  pcli.addSwitch("print-golden", "heading", "d", "heading", false,
+                 "also print a header", "");
+  pcli.addSwitch("print-golden", "note", "n", "note", false,
+                 "also print the note column.  It is free text, whose\n"
+                 "       commas make the csv awkward to parse, so it is\n"
+                 "       off by default",
+                 "");
+  pcli.addSwitch(
+      "print-golden", "source", "s", "source", true,
+      "only the golden files of this source, either\n       csv like "
+      "\"pass1,ele,file,0\" = process,stream,aggregation,version\n    "
+      "   or an SID");
+  pcli.addSwitch(
+      "print-golden", "run", "r", "run", true,
+      "only declarations whose range covers this run,\n       like "
+      "\"125873\" or \"125873:631\".  With one --source the\n"
+      "       last line printed is then the one in force");
+  pcli.addSwitch(
+      "print-golden", "time", "t", "time", true,
+      "only declarations whose range covers this time,\n       like "
+      "\"2026-11-19T06:38:46\", read in the server's\n"
+      "       timezone unless it carries one");
 
   pcli.addSubcommand("print-alarms", "list alarm episodes");
   pcli.addSwitch("print-alarms", "heading", "d", "heading", false,
@@ -138,6 +168,37 @@ static int dqmToolMain(int argc, char** argv) {
       "group,subgroup,name,llimit,ulimit,sigma,alarmcode\n       or a filespec "
       "of a text file containing csv strings");
 
+  pcli.addSubcommand("commit-golden",
+                     "declare a golden, or reference, file for a source");
+  pcli.addSwitch("commit-golden", "source", "s", "source", true,
+                 "source the file is the reference for, csv like "
+                 "\"pass1,ele,file,0\" = process,stream,aggregation,version");
+  pcli.addSwitch(
+      "commit-golden", "runs", "r", "runs", true,
+      "runs the declaration is valid for\n       like "
+      "\"1100:0-1101:999999\" (optional)");
+  pcli.addSwitch(
+      "commit-golden", "start", "t", "start", true,
+      "start of the range of validity\n       like \"2022-01-01T14:00:00\", "
+      "read in the server's\n       timezone unless it carries one, as in "
+      "\"...T14:00:00Z\"");
+  pcli.addSwitch(
+      "commit-golden", "end", "e", "end", true,
+      "end of the range of validity\n       like \"2022-01-01T14:00:00\"\n"
+      "       omitting this does not leave the range open ended, it\n"
+      "       copies --start; pass \"infinity\" for an open end, which is\n"
+      "       what a reference that applies from --start onwards needs");
+  pcli.addSwitch(
+      "commit-golden", "file", "f", "file", true,
+      "name of the reference file, one of the source's own\n"
+      "       (see print-files) or one made by hand, an average say.\n"
+      "       Recorded as given and not checked for existence, since\n"
+      "       this often runs where the file is not visible");
+  pcli.addSwitch("commit-golden", "note", "n", "note", true,
+                 "free text for how a hand-made reference was arrived\n"
+                 "       at (optional).  A repeated declaration does not\n"
+                 "       change the note already recorded");
+
   pcli.addSubcommand("commit-alarm", "commit an alarm finding");
   pcli.addSwitch("commit-alarm", "algo", "a", "algo", true,
                  "name of the algorithm, e.g. \"limits\"");
@@ -182,7 +243,15 @@ static int dqmToolMain(int argc, char** argv) {
     rc = tool.printValues(pcli.getBool("print-values", "heading"));
     if (rc != 0) return rc;
   } else if (pcli.subcommand() == "print-files") {
-    rc = tool.printFiles(pcli.getBool("print-files", "heading"));
+    rc = tool.printFiles(pcli.getBool("print-files", "heading"),
+                         pcli.getString("print-files", "source"));
+    if (rc != 0) return rc;
+  } else if (pcli.subcommand() == "print-golden") {
+    rc = tool.printGolden(pcli.getBool("print-golden", "heading"),
+                          pcli.getBool("print-golden", "note"),
+                          pcli.getString("print-golden", "source"),
+                          pcli.getString("print-golden", "run"),
+                          pcli.getString("print-golden", "time"));
     if (rc != 0) return rc;
   } else if (pcli.subcommand() == "print-alarms") {
     rc = tool.printAlarms(pcli.getBool("print-alarms", "heading"),
@@ -220,6 +289,14 @@ static int dqmToolMain(int argc, char** argv) {
                           pcli.getString("commit-limit", "start"),
                           pcli.getString("commit-limit", "end"),
                           pcli.getString("commit-limit", "value"));
+    if (rc != 0) return rc;
+  } else if (pcli.subcommand() == "commit-golden") {
+    rc = tool.commitGolden(pcli.getString("commit-golden", "source"),
+                           pcli.getString("commit-golden", "runs"),
+                           pcli.getString("commit-golden", "start"),
+                           pcli.getString("commit-golden", "end"),
+                           pcli.getString("commit-golden", "file"),
+                           pcli.getString("commit-golden", "note"));
     if (rc != 0) return rc;
   } else if (pcli.subcommand() == "commit-alarm") {
     rc = tool.commitAlarm(pcli.getString("commit-alarm", "algo"),

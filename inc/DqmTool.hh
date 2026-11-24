@@ -10,6 +10,7 @@
 #include "DQM/inc/DqmAlarm.hh"
 #include "DQM/inc/DqmCause.hh"
 #include "DQM/inc/DqmFile.hh"
+#include "DQM/inc/DqmGolden.hh"
 #include "DQM/inc/DqmInterval.hh"
 #include "DQM/inc/DqmLimit.hh"
 #include "DQM/inc/DqmNumber.hh"
@@ -20,6 +21,7 @@
 #include "Offline/DbTables/inc/DbIoV.hh"
 #include "Offline/GeneralUtilities/inc/StringVec.hh"
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -34,7 +36,14 @@ class DqmTool {
   int printSources(bool heading = false);
   int printIntervals(bool heading = false);
   int printValues(bool heading = false);
-  int printFiles(bool heading = false);
+  int printFiles(bool heading = false, const std::string& source = "");
+  // the golden files declared for a source.  run and time are positions,
+  // not ranges: each keeps only the rows whose range of validity covers
+  // it.  Rows come back in commit order, so with one source and a
+  // position the last line is the one in force.
+  int printGolden(bool heading = false, bool note = false,
+                  const std::string& source = "", const std::string& run = "",
+                  const std::string& time = "");
   int printAlarms(bool heading = false, bool note = false, bool live = false);
   int printCauses(bool heading = false, bool numbers = false,
                   const std::string& aid = "");
@@ -47,6 +56,11 @@ class DqmTool {
   int commitLimit(const std::string& source = "", const std::string& runs = "",
                   const std::string& start = "", const std::string& end = "",
                   const std::string& limit = "");
+  // declare one golden, or reference, file for a source over one range
+  // of runs or time.  The range is a range of validity, as a limit's is.
+  int commitGolden(const std::string& source = "", const std::string& runs = "",
+                   const std::string& start = "", const std::string& end = "",
+                   const std::string& file = "", const std::string& note = "");
   // take a finding from one evaluator instance and either extend the
   // episode it continues or open a new one
   int commitAlarm(const std::string& algo = "", const std::string& config = "",
@@ -92,6 +106,11 @@ class DqmTool {
   int insertCause(DqmCause& cause, int aid);
   // give the process, stream etc in a source, lookup sid in db
   int lookupSid(DqmSource& source);
+  // turn a --source argument into a sid.  The argument is either an sid
+  // already or the csv "process,stream,aggregation,version" to look one
+  // up from; an empty argument means no source filter and leaves sid at
+  // -1.  Prints why and returns 1 if it names nothing.
+  int resolveSid(const std::string& source, int& sid);
   // give the parameters in an interval, lookup iid in db
   int lookupIid(DqmInterval& interval);
   // give the group, subgroup etc in a value, lookup vid in db
@@ -101,8 +120,16 @@ class DqmTool {
   int locateInterval(DqmInterval& interval);
   int locateValue(DqmValue& value);
   int locateFile(DqmFile& file);
+  int locateGolden(DqmGolden& golden);
   int insertNumber(DqmNumber& number);
   int insertLimit(DqmLimit& limit);
+  // the iids of this source's intervals whose range covers one position,
+  // either a run (or run:subrun) or a time.  The containment test is left
+  // to the database, as dqm.reader does it, so there is no second copy of
+  // it here.  Returns no iids, and no error, when nothing covers the
+  // position.
+  int coveringIids(int sid, const std::string& run, const std::string& time,
+                   std::set<int>& iids);
 
   int _verbose;
   int _dryrun;
