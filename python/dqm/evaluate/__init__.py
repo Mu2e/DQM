@@ -26,7 +26,7 @@ The pieces, in the order they matter:
     driver.py   the loop, the commits, the log
     limits.py   is each metric inside its band?
     trends.py   has each metric moved, compared with its own past?
-    crv_ml.py   is a CRV point anomalous to the trained ML models? (crv_ml
+    tranad.py   is a point anomalous to the trained TranAD model? (tranad
                 extra; not imported here, since it needs torch)
 """
 

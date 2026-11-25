@@ -72,10 +72,10 @@ evaluate = [
   "mu2e-dqm",
   "PyYAML>=6.0"
 ]
-# The crv_ml evaluator (TranAD/PCA anomaly detection on CRV timelines). The
-# code, its training pipeline and torch come from mu2e-tranad; see
-# dqm/evaluate/crv_ml.py.
-crv_ml = [
+# The tranad evaluator (TranAD anomaly detection on DQM timelines). The code,
+# its training pipeline and torch come from mu2e-tranad; see
+# dqm/evaluate/tranad.py.
+tranad = [
   "mu2e-dqm[evaluate]",
   "mu2e-tranad @ git+https://github.com/sophiemiddleton/mu2e-tranad.git"
 ]
