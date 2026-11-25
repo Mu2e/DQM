@@ -72,6 +72,13 @@ evaluate = [
   "mu2e-dqm",
   "PyYAML>=6.0"
 ]
+# The crv_ml evaluator (TranAD/PCA anomaly detection on CRV timelines). The
+# code, its training pipeline and torch come from mu2e-tranad; see
+# dqm/evaluate/crv_ml.py.
+crv_ml = [
+  "mu2e-dqm[evaluate]",
+  "mu2e-tranad @ git+https://github.com/sophiemiddleton/mu2e-tranad.git"
+]
 # Finding files through metacat, and turning a Mu2e file name into a path.
 # mu2e-mdh is requested WITHOUT its [full] extra: that extra pins rucio and
 # data-dispatcher, a heavy install this does not need. Everything used here is

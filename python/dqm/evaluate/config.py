@@ -58,6 +58,12 @@ def _registry() -> Dict[str, type]:
         out[TrendsEvaluator.algo] = TrendsEvaluator
     except ImportError:
         pass
+    try:  # needs mu2e-tranad and torch: the crv_ml extra
+        from dqm.evaluate.crv_ml import CrvMlEvaluator
+
+        out[CrvMlEvaluator.algo] = CrvMlEvaluator
+    except ImportError as exc:
+        LOGGER.debug("crv_ml evaluator unavailable: %s", exc)
     return out
 
 
