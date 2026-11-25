@@ -2,7 +2,7 @@
 optional PCA and training-drift detectors from the same bundle).
 
 The evaluator itself lives in the mu2e-tranad package
-(github.com/sophiemiddleton/mu2e-tranad, mu2e_tranad/evaluator/tranad_evaluator.py),
+(github.com/Mu2e/mu2e-tranad, mu2e_tranad/evaluator/tranad_evaluator.py),
 together with the training pipeline and the model bundles it loads. It needs
 torch, which nothing else in dqm does, so it is not vendored here; this module
 only re-exports it so the registry can find it. Install with:

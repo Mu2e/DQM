@@ -77,7 +77,7 @@ evaluate = [
 # dqm/evaluate/tranad.py.
 tranad = [
   "mu2e-dqm[evaluate]",
-  "mu2e-tranad @ git+https://github.com/sophiemiddleton/mu2e-tranad.git"
+  "mu2e-tranad @ git+https://github.com/Mu2e/mu2e-tranad.git"
 ]
 # Finding files through metacat, and turning a Mu2e file name into a path.
 # mu2e-mdh is requested WITHOUT its [full] extra: that extra pins rucio and
