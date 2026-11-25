@@ -72,9 +72,9 @@ evaluate = [
   "mu2e-dqm",
   "PyYAML>=6.0"
 ]
-# The tranad evaluator (TranAD anomaly detection on DQM timelines). The code,
-# its training pipeline and torch come from mu2e-tranad; see
-# dqm/evaluate/tranad.py.
+# The tranad evaluator (dqm/evaluate/tranad.py): TranAD anomaly detection on
+# DQM timelines. The model, its training pipeline and torch come from
+# mu2e-tranad; the evaluator loads the bundles that pipeline saves.
 tranad = [
   "mu2e-dqm[evaluate]",
   "mu2e-tranad @ git+https://github.com/Mu2e/mu2e-tranad.git"
