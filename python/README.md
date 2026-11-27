@@ -334,6 +334,32 @@ built on Flask, so `dqm.web.app.server` is a real Flask application; that is
 what lets the static-image export routes live in the same process as the
 interactive UI.
 
+### Overlaying the golden file
+
+On the Histograms tab, File B offers `golden` as its first entry — and the
+path box accepts the word typed, for when a path was given rather than a
+dataset chosen. Either way it overlays whichever reference `dqm.golden`
+declares for **file A**, rather than a file picked by hand. It works for one
+histogram and for the whole grid.
+
+File A is what the lookup is about, since it supplies both the histogram list
+and the run; `dqm.golden.golden_for_file` does the chain:
+
+| | how |
+|---|---|
+| source and run | `dqm.files`, the back pointer a committed file leaves — gives the sid *and* the interval, so no name convention is involved |
+| source, failing that | the file name's `<process>-<version>-<aggregation>`, accepted only if exactly one source matches: the stream is not in the name, so a family differing only by stream is refused rather than guessed |
+| run, failing that | the sequencer, `<run>_<subrun>` |
+| nothing covers it | the declaration left open ended — the reference in use now — reported as such |
+| none of the above | "no golden file", with which step stopped |
+
+The reference is drawn as a reference: a heavier gold outline with the data as
+points over it, following ROOT's HIST-then-E1-P habit, and the comparison
+verdict then grades the data against it. A line under the plot always names
+the file, the source, the run and the declaration it came from. That matters
+more than the overlay: a reference is not rigorously maintained, and the wrong
+one drawn silently is worse than none.
+
 ### Install and run
 
 ```bash
@@ -372,6 +398,12 @@ mid-request.
 | `--check` | | construct and exit |
 | `--debug` | | Dash debug mode with hot reload |
 
+Two environment variables, both read by the application rather than the CLI,
+so they apply equally under gunicorn: `DQM_WEB_ALLOW` restricts which
+addresses are served (below), and `DQM_WEB_LOG_LEVEL` sets the level of the
+`dqm` logger when nothing else has configured logging -- which is the case
+under a WSGI server, where `INFO` is the default.
+
 ### Behind a reverse proxy
 
 Running the app on a machine where the environment is easy and proxying to it
@@ -388,6 +420,51 @@ the service account can read.
 
 `/healthz` returns the running version, for the proxy and for systemd.
 
+### Restricting who may connect: `DQM_WEB_ALLOW`
+
+When the proxy runs on another host the app has to bind `0.0.0.0`, and the
+advice above stops being available. `DQM_WEB_ALLOW` is the substitute: a
+comma-separated list of addresses or CIDR networks, IPv4 or IPv6, and anything
+outside it gets 403 before a callback is reached.
+
+```ini
+Environment=DQM_WEB_ALLOW=131.225.111.176,131.225.111.177,2620:6a:0:400:f0:0:111:176
+```
+
+- **Unset means no filtering**, and the app logs one line saying so at
+  startup: `no DQM_WEB_ALLOW set -- every address that can reach the port is
+  served`. That is information, not a warning. A control that switched itself
+  on during an upgrade and cut off access would be worse than one that has to
+  be asked for, so the default is open and the policy in force is always in
+  the log. With the list set the same line reads `DQM_WEB_ALLOW active --
+  serving ...` and names every network, so which it is never has to be
+  guessed.
+- **Bound to loopback, you do not need it.** Loopback is always allowed -- a
+  typo in the list cannot lock the host out of its own service -- so with
+  `--bind 127.0.0.1` the list adds nothing.
+- **It is not authentication.** Anyone who can send packets from an allowed
+  address is allowed, and everything on the app's own host is allowed via
+  loopback. What it buys is that traffic has to arrive through the proxy,
+  which is where SSO happens; without it the proxy's SSO is the polite way in
+  rather than the only way in.
+- `X-Forwarded-For` is deliberately ignored -- a client can put anything in a
+  header -- so the address compared is the peer of the TCP connection, i.e.
+  the proxy's, which is what you are allowing.
+- A malformed entry is logged and skipped rather than refused, so one typo in
+  a list of five does not stop the service; if *every* entry is unusable the
+  log says so at ERROR and only loopback is served.
+
+Set it where the service reads its environment, not in your shell:
+`dqm-web --check` builds the app in whatever shell you are sitting in and
+exits, so the line it prints says nothing about what the running service does.
+Put it in the unit's `Environment=` or `EnvironmentFile=`, reload, restart,
+and confirm from the service's own log:
+
+```bash
+systemctl --user daemon-reload && systemctl --user restart dqm-web
+journalctl --user -u dqm-web | grep DQM_WEB_ALLOW
+```
+
 ### Running it as a service
 
 The same pattern the dqm MCP uses -- `systemd --user` with lingering enabled,
@@ -403,6 +480,8 @@ Wants=network-online.target
 Type=simple
 Environment=MPLCONFIGDIR=/var/tmp/dqm-web-mpl
 Environment=METACAT_SERVER_URL=https://metacat.fnal.gov:9443/mu2e_meta_prod/app
+# Only needed when binding something other than loopback -- see above.
+# Environment=DQM_WEB_ALLOW=131.225.111.176,131.225.111.177
 ExecStart=/path/to/dqm-web/bin/gunicorn --bind 127.0.0.1:8100 --workers 4 \
     --timeout 120 dqm.web.app:server
 Restart=on-failure

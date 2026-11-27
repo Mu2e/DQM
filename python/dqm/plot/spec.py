@@ -36,6 +36,7 @@ __all__ = [
     "LineMarker",
     "PlotSpec",
     "PALETTE",
+    "REFERENCE_COLOR",
     "hist_points",
 ]
 
@@ -50,6 +51,15 @@ PALETTE: Tuple[str, ...] = (
     "#9467bd",  # purple
     "#8c564b",  # brown
 )
+
+# For a reference overlay -- a golden file drawn behind the histogram being
+# compared against it. Deliberately not in PALETTE: it names a role rather
+# than taking the next colour, so a reference looks the same in every figure
+# and never collides with the data it is being compared to.
+#
+# Dark goldenrod rather than gold: the obvious #FFD700 is almost invisible on
+# white, and a reference nobody can see is worse than one in any colour.
+REFERENCE_COLOR = "#B8860B"
 
 
 def hist_points(h) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -87,9 +97,27 @@ class HistTrace:
     style: str = "step"
     alpha: float = 1.0
     stats: Optional[List[str]] = None  # lines for a statistics box
+    # Line weight for "step" and "fill", as a multiple of the normal one.
+    # For picking out the one trace that is not data: a reference overlay is
+    # drawn heavier than the histogram being judged against it, which reads
+    # as "this is the yardstick" without needing a legend.
+    weight: float = 1.0
+    # Multiply the drawn contents by this. For normalizing an overlay onto
+    # the histogram it is being compared with, so two distributions of
+    # different size can be compared by shape.
+    #
+    # Applied to the values and the errors alike, which is what scaling a
+    # measurement means: k counts with k*sigma, not sqrt(k*n). Scaling the
+    # Hist itself instead would re-derive the errors from the scaled counts
+    # and quietly shrink them.
+    scale: float = 1.0
 
     def points(self):
-        return hist_points(self.hist)
+        centers, values, errors, edges = hist_points(self.hist)
+        if self.scale != 1.0:
+            values = values * self.scale
+            errors = errors * self.scale
+        return centers, values, errors, edges
 
 
 @dataclass
@@ -210,11 +238,12 @@ class PlotSpec:
 
     def add_hist(self, h, label: str = "", color: Optional[str] = None,
                  style: str = "step", alpha: float = 1.0,
-                 stats: Optional[List[str]] = None) -> "PlotSpec":
+                 stats: Optional[List[str]] = None,
+                 weight: float = 1.0, scale: float = 1.0) -> "PlotSpec":
         """Add a histogram. Returns self, so calls can be chained."""
         self.traces.append(
             HistTrace(hist=h, label=label, color=color, style=style,
-                      alpha=alpha, stats=stats)
+                      alpha=alpha, stats=stats, weight=weight, scale=scale)
         )
         return self
 

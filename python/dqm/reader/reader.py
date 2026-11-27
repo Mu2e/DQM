@@ -643,6 +643,7 @@ class DqmReader:
         self,
         sid: IdSpec = None,
         iid: IdSpec = None,
+        filename: Optional[str] = None,
         with_intervals: bool = True,
         limit: Optional[int] = DEFAULT_LIMIT,
     ) -> pd.DataFrame:
@@ -653,8 +654,16 @@ class DqmReader:
         not validity -- the interval is the one the metrics were measured in
         -- so it is the opposite direction from golden() below.
 
+        `filename` runs that pointer backwards: which point produced this
+        file. It is an exact match on the name as committed -- QE has no LIKE,
+        so there is no substring search, and a path has to be reduced to its
+        basename first. The unique key is (sid, iid, filename), so one name
+        can legitimately come back against more than one source; the caller
+        decides what that means rather than this taking the first row.
+
         with_intervals joins each row's run range and timestamps, which is
-        what makes "the file behind run N" answerable.
+        what makes "the file behind run N" answerable -- and, read backwards,
+        where a named file sits on the timeline.
         """
         sids = _as_id_list(sid)
         iids = _as_id_list(iid)
@@ -666,6 +675,8 @@ class DqmReader:
             clauses.append(where_eq("iid", iids[0]))
         elif iids is not None:
             clauses.extend(self._id_range("iid", iids))
+        if filename:
+            clauses.append(where_eq("filename", filename))
 
         df = self.read_table(FILES, clauses=clauses or None, order="fid",
                              limit=limit)
