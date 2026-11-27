@@ -126,6 +126,34 @@ def _flow_slice(n_with_flow: int, underflow: bool, overflow: bool) -> slice:
     return slice(start, stop)
 
 
+def area_scale(hist1, hist2, pars: Optional["ComparePars"] = None) -> float:
+    """The factor that puts hist2's area onto hist1's, or 0.0 if it cannot.
+
+    What "normalize to compare shapes" means, in one place: the two things
+    that have to agree on it are the drawing and the verdict. The `fraction`
+    measure below is area-sensitive -- it is the divergence of the running
+    sums, not of the normalized ones -- so scaling what is drawn without
+    scaling what is judged would show two curves lying on top of each other
+    and call them a failure. Hand this to ComparePars.scale2 and to the
+    display together.
+
+    Flow bins follow `pars`, so the area is over exactly the bins the
+    comparison looks at. 0.0 when hist2 is empty, or either sum is negative:
+    there is no factor that normalizes nothing, and anything derived from a
+    negative area would silently flip the histogram over.
+    """
+    pars = pars or ComparePars()
+    v1 = np.asarray(hist1.values(flow=True), dtype=float)
+    v2 = np.asarray(hist2.values(flow=True), dtype=float)
+    if v1.shape != v2.shape:
+        return 0.0
+    sl = _flow_slice(len(v1), pars.underflow, pars.overflow)
+    sum1, sum2 = float(v1[sl].sum()), float(v2[sl].sum())
+    if sum2 <= 0.0 or sum1 <= 0.0:
+        return 0.0
+    return sum1 / sum2
+
+
 def kolmogorov_test(
     values1: Sequence[float],
     values2: Sequence[float],

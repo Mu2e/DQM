@@ -23,7 +23,41 @@ except ImportError as exc:  # pragma: no cover - dependency error path
         "pip install 'mu2e-dqm[plot]'"
     ) from exc
 
-__all__ = ["to_plotly", "to_plotly_grid"]
+__all__ = ["to_plotly", "to_plotly_grid", "AXIS_STYLE"]
+
+# The axes themselves, which no template here draws.
+#
+# plotly_white sets linecolor, gridcolor and zerolinecolor all to #EBF0F8 and
+# leaves showline off with ticks empty, so a panel arrived as a field of pale
+# grid with no frame, no tick marks, and an axis indistinguishable from the
+# gridlines crossing it -- there was nothing to read a value against.
+#
+# So: a frame in a colour clearly darker than the grid, mirrored onto all four
+# sides as a HEP figure is drawn (and as the static renderer's ROOT style
+# already draws it), with tick marks outside the panel. Outside rather than
+# ROOT's inward ticks because these panels are zoomable: data pushed against
+# the frame would sit on top of inward ticks, and a tick is no use if it
+# cannot be told from a bin.
+#
+# The grid keeps the template's colour -- it was never the problem, and the
+# frame being darker is what makes the hierarchy read. zeroline stays on but
+# darker than the grid and lighter than the frame: for a histogram starting at
+# zero the bottom frame already marks it, but a timeline of a quantity that
+# goes negative needs y=0 visible, and it should read as a reference line
+# rather than as one more gridline.
+AXIS_STYLE = dict(
+    showline=True,
+    linecolor="#444444",
+    linewidth=1,
+    mirror=True,
+    ticks="outside",
+    tickcolor="#444444",
+    ticklen=5,
+    tickwidth=1,
+    zeroline=True,
+    zerolinecolor="#BBBBBB",
+    zerolinewidth=1,
+)
 
 
 def _step_xy(edges, values):
@@ -66,14 +100,15 @@ def _draw(fig, spec: PlotSpec, row=None, col=None):
             x, y = _step_xy(edges, values)
             fig.add_trace(
                 go.Scatter(x=x, y=y, mode="lines", name=name, fill="tozeroy",
-                           line=dict(color=color, width=1), opacity=trace.alpha),
+                           line=dict(color=color, width=1 * trace.weight),
+                           opacity=trace.alpha),
                 **where
             )
         else:  # "step"
             x, y = _step_xy(edges, values)
             fig.add_trace(
                 go.Scatter(x=x, y=y, mode="lines", name=name,
-                           line=dict(color=color, width=1.5),
+                           line=dict(color=color, width=1.5 * trace.weight),
                            opacity=trace.alpha),
                 **where
             )
@@ -139,6 +174,11 @@ def to_plotly(spec: PlotSpec, height: int = 500, template: str = "plotly_white")
     """Build a plotly Figure from a PlotSpec."""
     fig = go.Figure()
     _draw(fig, spec)
+
+    # Before the per-spec updates below, so an explicit range or log scale
+    # still wins.
+    fig.update_xaxes(**AXIS_STYLE)
+    fig.update_yaxes(**AXIS_STYLE)
 
     fig.update_layout(
         title=spec.title or None,
@@ -215,6 +255,12 @@ def to_plotly_grid(
     for i, spec in enumerate(specs):
         row, col = i // cols + 1, i % cols + 1
         _draw(fig, spec, row=row, col=col)
+        # Per panel rather than over the whole figure: make_subplots builds a
+        # full rows x cols set of axes, so framing them all would draw an
+        # empty box wherever the last row does not fill up. First, so the
+        # updates below still win.
+        fig.update_xaxes(**AXIS_STYLE, row=row, col=col)
+        fig.update_yaxes(**AXIS_STYLE, row=row, col=col)
         fig.update_yaxes(title_text=spec.ylabel or None, row=row, col=col)
         if spec.logy:
             fig.update_yaxes(type="log", row=row, col=col)
@@ -228,6 +274,14 @@ def to_plotly_grid(
         # x label on the bottom panel only; above, it would repeat between
         # panels that share the axis.
         fig.update_xaxes(title_text=specs[-1].xlabel or None, row=rows, col=1)
+
+    # A last row that does not fill up leaves cells with axes and no data.
+    # Hidden rather than left to the template, which would draw a patch of
+    # pale grid that reads as a panel still loading.
+    for i in range(len(specs), rows * cols):
+        row, col = i // cols + 1, i % cols + 1
+        fig.update_xaxes(visible=False, row=row, col=col)
+        fig.update_yaxes(visible=False, row=row, col=col)
 
     fig.update_layout(
         template=template,

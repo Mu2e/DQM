@@ -94,9 +94,16 @@ def _ensure_logging() -> None:
     stderr, because gunicorn captures that into its error log and systemd
     journals it from there.  Skipped entirely if a handler already exists, so
     the CLI's configuration is never duplicated.
+
+    "Already exists" has to include the root logger, not just this one.
+    logging.basicConfig -- which the CLI calls -- configures the root, and
+    records from "dqm" propagate there, so testing only getLogger("dqm")
+    found no handler, added a second one, and every line was then emitted
+    twice in two different formats.  An existing configuration is left
+    exactly as it is, levels included: whoever set it up meant it.
     """
     root = logging.getLogger("dqm")
-    if root.handlers:
+    if root.handlers or logging.getLogger().handlers:
         return
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(
@@ -257,5 +264,20 @@ def create_app(
 
 # Module-level instances, so a WSGI server can be pointed straight at them:
 #   gunicorn 'dqm.web.app:server'
-app = create_app()
-server = app.server
+#
+# Built on first access rather than at import (PEP 562), because importing
+# this module is not the same thing as wanting an application. `dqm-web` and
+# the tests import it for create_app and build their own; with an app built at
+# import they got a second one, complete with every tab's callbacks and a
+# second access filter, that was then thrown away -- and its startup lines
+# appeared in the log beside the real one's. Attribute access is exactly what
+# `dqm.web.app:server` does, so a WSGI server still finds one built on demand,
+# and the package docstring's promise that importing dqm.web builds nothing
+# now holds all the way down.
+def __getattr__(name: str) -> Any:
+    if name in ("app", "server"):
+        application = create_app()
+        globals()["app"] = application
+        globals()["server"] = application.server
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

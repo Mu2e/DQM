@@ -147,10 +147,10 @@ def _draw(fig, ax, spec: PlotSpec, show_xlabel: bool = True) -> None:
                         elinewidth=1, capsize=0)
         elif trace.style == "fill":
             ax.stairs(values, edges, fill=True, color=color, label=label,
-                      alpha=trace.alpha * 0.6)
+                      alpha=trace.alpha * 0.6, linewidth=1.0 * trace.weight)
         else:  # "step"
             ax.stairs(values, edges, color=color, label=label,
-                      alpha=trace.alpha, linewidth=1.4)
+                      alpha=trace.alpha, linewidth=1.4 * trace.weight)
 
     for k, strace in enumerate(spec.series):
         x, y, err = strace.arrays()

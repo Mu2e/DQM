@@ -43,6 +43,7 @@ from dqm.hist.compare import (  # noqa: F401
     Comparison,
     CompareStatus,
     compare_files,
+    area_scale,
     compare_histograms,
     kolmogorov_test,
     summarize,
@@ -69,6 +70,7 @@ __all__ = [
     "get_fit",
     "MODELS",
     # comparing
+    "area_scale",
     "compare_histograms",
     "compare_files",
     "kolmogorov_test",
