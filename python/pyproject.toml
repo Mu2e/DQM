@@ -72,6 +72,13 @@ evaluate = [
   "mu2e-dqm",
   "PyYAML>=6.0"
 ]
+# The tranad evaluator (dqm/evaluate/tranad.py): TranAD anomaly detection on
+# DQM timelines. The model, its training pipeline and torch come from
+# mu2e-tranad; the evaluator loads the bundles that pipeline saves.
+tranad = [
+  "mu2e-dqm[evaluate]",
+  "mu2e-tranad @ git+https://github.com/Mu2e/mu2e-tranad.git"
+]
 # Finding files through metacat, and turning a Mu2e file name into a path.
 # mu2e-mdh is requested WITHOUT its [full] extra: that extra pins rucio and
 # data-dispatcher, a heavy install this does not need. Everything used here is

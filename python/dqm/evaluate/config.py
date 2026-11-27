@@ -58,6 +58,12 @@ def _registry() -> Dict[str, type]:
         out[TrendsEvaluator.algo] = TrendsEvaluator
     except ImportError:
         pass
+    try:  # needs mu2e-tranad and torch: the tranad extra
+        from dqm.evaluate.tranad import TranADEvaluator
+
+        out[TranADEvaluator.algo] = TranADEvaluator
+    except ImportError as exc:
+        LOGGER.debug("tranad evaluator unavailable: %s", exc)
     return out
 
 
